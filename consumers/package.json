@@ -1,0 +1,22 @@
+{
+  "name": "consumers",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "amqplib": "^2.0.1"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@types/amqplib": "^0.10.8",
+    "@types/node": "^26.6.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^7.0.2"
+  }
+}

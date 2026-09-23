@@ -26,9 +26,9 @@ async function initRabbitMQ() {
         const connection = await amqp.connect(RABBITMQ_URL);
         rabbitChannel = await connection.createChannel();
         await rabbitChannel.assertExchange('hazard_events', 'fanout', { durable: true });
-        console.log('Aggregator berhasil terhubung ke RabbitMQ');
+        console.log('[Aggregator] Berhasil terhubung ke RabbitMQ');
     } catch (error) {
-        console.error('Gagal terhubung ke RabbitMQ:', error);
+        console.error('[Aggregator] Gagal terhubung ke RabbitMQ:', error);
     }
 }
 
