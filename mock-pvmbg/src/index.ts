@@ -10,6 +10,8 @@ let isOutage = false;
 let useNewSchema = false;
 
 const REPORT_INTERVAL_MS = parseInt(process.env.PVMBG_REPORT_INTERVAL_MS || '10000', 10);
+const DELAY_MIN_MS = parseInt(process.env.PVMBG_DELAY_MIN_MS || '500', 10);
+const DELAY_MAX_MS = parseInt(process.env.PVMBG_DELAY_MAX_MS || '3000', 10);
 
 function createVolcanicReport(n: number, reportedAt: Date) {
     return {
@@ -45,7 +47,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     }
     
     if (!req.path.startsWith('/admin')) {
-        const delay = Math.floor(Math.random() * 2500) + 500; // 500-3000 ms
+        const delay = DELAY_MIN_MS + Math.floor(Math.random() * (Math.max(DELAY_MAX_MS - DELAY_MIN_MS, 0) + 1));
         setTimeout(next, delay);
     } else {
         next();
