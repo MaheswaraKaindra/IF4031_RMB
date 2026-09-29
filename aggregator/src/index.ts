@@ -16,11 +16,10 @@ const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5
 
 let lastFetchBMKG = new Date(0).toISOString();
 let lastFetchPVMBG = new Date(0).toISOString();
-
+let isPolling = false;
 let rabbitChannel: amqp.Channel;
 
 
-// Problem 5
 async function initRabbitMQ() {
     try {
         const connection = await amqp.connect(RABBITMQ_URL);
@@ -54,53 +53,60 @@ async function fetchPVMBG() {
 }
 
 async function pollData() {
-    const fetchTime = new Date().toISOString();
-    
-    // Problem 2
-    const [bmkgResult, pvmbgResult] = await Promise.allSettled([
-        fetchBMKG(),
-        fetchPVMBG()
-    ]);
+    if (isPolling) {
+        console.warn('Poll sebelumnya masih berjalan, tick ini dilewati');
+        return;
+    }
+    isPolling = true;
 
-    const newHazards: HazardEvent[] = [];
+    try {
+        const fetchTime = new Date().toISOString();
 
-    // Proses Data BMKG
-    if (bmkgResult.status === 'fulfilled') {
-        const { events, warnings } = bmkgResult.value;
-        if (events.length > 0) {
+        const [bmkgResult, pvmbgResult] = await Promise.allSettled([
+            fetchBMKG(),
+            fetchPVMBG()
+        ]);
+
+        const newHazards: HazardEvent[] = [];
+
+        // Proses Data BMKG
+        if (bmkgResult.status === 'fulfilled') {
+            const { events, warnings } = bmkgResult.value;
             events.forEach((raw: any) => {
                 const relatedWarning = warnings.find((w: any) => w.related_event_id === raw.event_id);
                 newHazards.push(mapSeismicToHazard(raw, relatedWarning));
             });
-            lastFetchBMKG = fetchTime; // Update timestamp
+            lastFetchBMKG = fetchTime;
+        } else {
+            console.error('Gagal mengambil data BMKG:', bmkgResult.reason.message);
         }
-    } else {
-        console.error('Gagal mengambil data BMKG:', bmkgResult.reason.message);
-    }
 
-    // Proses Data PVMBG
-    if (pvmbgResult.status === 'fulfilled') {
-        const reports = pvmbgResult.value;
-        if (reports.length > 0) {
+        // Proses Data PVMBG
+        if (pvmbgResult.status === 'fulfilled') {
+            const reports = pvmbgResult.value;
             reports.forEach((raw: any) => {
                 newHazards.push(mapVolcanicToHazard(raw));
             });
-            lastFetchPVMBG = fetchTime; // Update timestamp
+            lastFetchPVMBG = fetchTime;
+        } else {
+            console.warn('PVMBG tidak merespons (Outage / Timeout):', pvmbgResult.reason.message);
         }
-    } else {
-        console.warn('PVMBG tidak merespons (Outage / Timeout):', pvmbgResult.reason.message);
-    }
 
-    if (newHazards.length > 0 && rabbitChannel) {
-        newHazards.forEach(hazard => {
-            const message = Buffer.from(JSON.stringify(hazard));
-            rabbitChannel.publish('hazard_events', '', message);
-            console.log(`[x] Mempublikasikan HazardEvent: ${hazard.hazard_id}`);
-        });
-        
-        // WOI NUT @0xNathaniel
-        // Di bagian ini nantinya fungsi penyisipan ke MongoDB
-        // cmn Aggregator hrsnya yg konek ke DB
+        if (newHazards.length > 0 && rabbitChannel) {
+            newHazards.forEach(hazard => {
+                const message = Buffer.from(JSON.stringify(hazard));
+                rabbitChannel.publish('hazard_events', '', message);
+                console.log(`[x] Mempublikasikan HazardEvent: ${hazard.hazard_id}`);
+            });
+
+            // WOI NUT @0xNathaniel
+            // Di bagian ini nantinya fungsi penyisipan ke MongoDB
+            // cmn Aggregator hrsnya yg konek ke DB
+        }
+    } catch (error) {
+        console.error('Poll gagal:', error instanceof Error ? error.message : String(error));
+    } finally {
+        isPolling = false;
     }
 }
 
