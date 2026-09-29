@@ -14,7 +14,7 @@ const PVMBG_URL = process.env.PVMBG_URL || 'http://localhost:8082';
 const X_BMKG_KEY = process.env.X_BMKG_KEY;
 const PVMBG_TOKEN = process.env.PVMBG_TOKEN;
 const POLLING_INTERVAL = parseInt(process.env.POLLING_INTERVAL_MS || '3000', 10); // 2-5s
-const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
+const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 
 let lastFetchBMKG = new Date(0).toISOString();
 let lastFetchPVMBG = new Date(0).toISOString();
