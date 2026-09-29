@@ -3,6 +3,8 @@ import axios from 'axios';
 import amqp from 'amqplib';
 
 import { mapSeismicToHazard, mapVolcanicToHazard, type HazardEvent } from './utils/mapper.js';
+import { connectMongo } from './db/mongo.js';
+import { upsertHazard, markSourceSuccess } from './db/hazardRepository.js';
 
 const app = express();
 const PORT = process.env.AGGREGATOR_PORT || 3000;
@@ -68,6 +70,8 @@ async function pollData() {
         ]);
 
         const newHazards: HazardEvent[] = [];
+        let bmkgFetched = false;
+        let pvmbgFetched = false;
 
         // Proses Data BMKG
         if (bmkgResult.status === 'fulfilled') {
@@ -76,7 +80,7 @@ async function pollData() {
                 const relatedWarning = warnings.find((w: any) => w.related_event_id === raw.event_id);
                 newHazards.push(mapSeismicToHazard(raw, relatedWarning));
             });
-            lastFetchBMKG = fetchTime;
+            bmkgFetched = true;
         } else {
             console.error('Gagal mengambil data BMKG:', bmkgResult.reason.message);
         }
@@ -87,21 +91,41 @@ async function pollData() {
             reports.forEach((raw: any) => {
                 newHazards.push(mapVolcanicToHazard(raw));
             });
-            lastFetchPVMBG = fetchTime;
+            pvmbgFetched = true;
         } else {
             console.warn('PVMBG tidak merespons (Outage / Timeout):', pvmbgResult.reason.message);
         }
 
-        if (newHazards.length > 0 && rabbitChannel) {
-            newHazards.forEach(hazard => {
+        // Save ke MongoDB
+        const inserted: HazardEvent[] = [];
+        let saveFailed = false;
+        for (const hazard of newHazards) {
+            try {
+                if (await upsertHazard(hazard)) inserted.push(hazard);
+            } catch (error) {
+                saveFailed = true;
+                console.error(`Gagal menyimpan HazardEvent ${hazard.source_ref_id}:`, error instanceof Error ? error.message : String(error));
+            }
+        }
+
+        if (!saveFailed) {
+            if (bmkgFetched) {
+                lastFetchBMKG = fetchTime;
+                await markSourceSuccess('BMKG');
+            }
+            if (pvmbgFetched) {
+                lastFetchPVMBG = fetchTime;
+                await markSourceSuccess('PVMBG');
+            }
+        }
+
+        // Publish ke RabbitMQ
+        if (rabbitChannel) {
+            inserted.forEach(hazard => {
                 const message = Buffer.from(JSON.stringify(hazard));
                 rabbitChannel.publish('hazard_events', '', message);
-                console.log(`[x] Mempublikasikan HazardEvent: ${hazard.hazard_id}`);
+                console.log(`Mempublikasikan HazardEvent: ${hazard.hazard_id}`);
             });
-
-            // WOI NUT @0xNathaniel
-            // Di bagian ini nantinya fungsi penyisipan ke MongoDB
-            // cmn Aggregator hrsnya yg konek ke DB
         }
     } catch (error) {
         console.error('Poll gagal:', error instanceof Error ? error.message : String(error));
@@ -114,7 +138,15 @@ app.get('/health', (req, res) => res.status(200).send('Aggregator Sehat'));
 
 app.listen(PORT, async () => {
     console.log(`Aggregator API berjalan di port ${PORT}`);
+
+    try {
+        await connectMongo();
+    } catch (error) {
+        console.error('Gagal terhubung ke MongoDB:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+    }
+
     await initRabbitMQ();
-    
+
     setInterval(pollData, POLLING_INTERVAL);
 });
