@@ -13,7 +13,6 @@ export interface HazardFilter {
 
 export type SourceStatuses = Record<'BMKG' | 'PVMBG', string | null>;
 
-// Returns true only when a new document was inserted (false = it already existed and was updated).
 export async function upsertHazard(h: HazardEvent): Promise<boolean> {
     const hazards = getHazards();
     const { hazard_id, ...rest } = h;
