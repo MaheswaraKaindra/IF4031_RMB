@@ -4,7 +4,7 @@ import amqp from 'amqplib';
 
 import { mapSeismicToHazard, mapVolcanicToHazard, type HazardEvent } from './utils/mapper.js';
 import { connectMongo } from './db/mongo.js';
-import { upsertHazard, markSourceSuccess } from './db/hazardRepository.js';
+import { upsertHazard, markSourceSuccess, getSourceStatuses, findHazards } from './db/hazardRepository.js';
 
 const app = express();
 const PORT = process.env.AGGREGATOR_PORT || 3000;
@@ -135,6 +135,59 @@ async function pollData() {
 }
 
 app.get('/health', (req, res) => res.status(200).send('Aggregator Sehat'));
+
+const HAZARD_TYPES = ['SEISMIC', 'VOLCANIC'] as const;
+const SEVERITIES = ['NORMAL', 'WASPADA', 'SIAGA', 'AWAS'] as const;
+const SOURCES = ['BMKG', 'PVMBG'] as const;
+
+function parseEnum<T extends string>(value: unknown, allowed: readonly T[]): T | undefined | null {
+    if (value === undefined) return undefined;
+    if (typeof value === 'string' && (allowed as readonly string[]).includes(value)) return value as T;
+    return null;
+}
+
+app.get('/internal/events', async (req, res) => {
+    const hazard_type = parseEnum(req.query.hazard_type, HAZARD_TYPES);
+    const severity = parseEnum(req.query.severity, SEVERITIES);
+    const source = parseEnum(req.query.source, SOURCES);
+    if (hazard_type === null || severity === null || source === null) {
+        res.status(400).json({ error: 'hazard_type, severity, atau source tidak valid' });
+        return;
+    }
+
+    let since: string | undefined;
+    const sinceParam = req.query.since;
+    if (sinceParam !== undefined) {
+        if (typeof sinceParam !== 'string' || Number.isNaN(Date.parse(sinceParam))) {
+            res.status(400).json({ error: 'since harus berupa tanggal ISO 8601' });
+            return;
+        }
+        since = new Date(sinceParam).toISOString();
+    }
+
+    const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+    if (!Number.isInteger(limit) || limit < 1) {
+        res.status(400).json({ error: 'limit harus bilangan bulat >= 1' });
+        return;
+    }
+
+    try {
+        const events = await findHazards({ hazard_type, severity, source, since }, limit);
+        res.json({ events });
+    } catch (error) {
+        console.error('Gagal membaca events:', error instanceof Error ? error.message : String(error));
+        res.status(503).json({ error: 'Canonical Store tidak tersedia' });
+    }
+});
+
+app.get('/internal/status', async (req, res) => {
+    try {
+        res.json(await getSourceStatuses());
+    } catch (error) {
+        console.error('Gagal membaca status:', error instanceof Error ? error.message : String(error));
+        res.status(503).json({ error: 'Canonical Store tidak tersedia' });
+    }
+});
 
 app.listen(PORT, async () => {
     console.log(`Aggregator API berjalan di port ${PORT}`);
