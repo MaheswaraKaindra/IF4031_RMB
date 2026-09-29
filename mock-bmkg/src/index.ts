@@ -6,26 +6,45 @@ const app = express();
 const PORT = process.env.BMKG_PORT || 8081;
 const API_KEY = process.env.X_BMKG_KEY;
 
-const seismicEvents = Array.from({ length: 20 }).map((_, i) => ({
-    event_id: `EV-BMKG-${1000 + i}`,
-    magnitude: +(Math.random() * (7.5 - 3.0) + 3.0).toFixed(1),
-    depth_km: +(Math.random() * 50 + 10).toFixed(1),
-    epicenter_lat: -8.5 + Math.random(),
-    epicenter_lon: 110.0 + Math.random(),
-    region_name: `Wilayah Pesisir ${i}`,
-    occurred_at: new Date(Date.now() - i * 3600000).toISOString(),
-    potential_tsunami: i % 5 === 0
-}));
+const EVENT_INTERVAL_MS = parseInt(process.env.BMKG_EVENT_INTERVAL_MS || '10000', 10); // new event every 10s (spec minimum)
 
-const tsunamiWarnings = seismicEvents
-    .filter(ev => ev.potential_tsunami)
-    .map(ev => ({
+function createSeismicEvent(n: number, occurredAt: Date) {
+    return {
+        event_id: `EV-BMKG-${1000 + n}`,
+        magnitude: +(Math.random() * (7.5 - 3.0) + 3.0).toFixed(1),
+        depth_km: +(Math.random() * 50 + 10).toFixed(1),
+        epicenter_lat: -8.5 + Math.random(),
+        epicenter_lon: 110.0 + Math.random(),
+        region_name: `Wilayah Pesisir ${n}`,
+        occurred_at: occurredAt.toISOString(),
+        potential_tsunami: n % 5 === 0
+    };
+}
+
+function createTsunamiWarning(ev: ReturnType<typeof createSeismicEvent>) {
+    return {
         warning_id: `WARN-${ev.event_id}`,
         related_event_id: ev.event_id,
         threat_level: ev.magnitude >= 6.5 ? 'Awas' : (ev.magnitude >= 5.0 ? 'Siaga' : 'Waspada'),
         affected_zones: [ev.region_name, 'Pesisi Sekitarnya'],
         estimated_arrival: new Date(new Date(ev.occurred_at).getTime() + 1800000).toISOString()
-    }));
+    };
+}
+
+const seismicEvents = Array.from({ length: 20 }).map((_, i) =>
+    createSeismicEvent(i, new Date(Date.now() - i * 3600000))
+);
+
+const tsunamiWarnings = seismicEvents
+    .filter(ev => ev.potential_tsunami)
+    .map(createTsunamiWarning);
+
+let nextEventNumber = seismicEvents.length;
+setInterval(() => {
+    const ev = createSeismicEvent(nextEventNumber++, new Date());
+    seismicEvents.push(ev);
+    if (ev.potential_tsunami) tsunamiWarnings.push(createTsunamiWarning(ev));
+}, EVENT_INTERVAL_MS);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path === '/health') return next();
