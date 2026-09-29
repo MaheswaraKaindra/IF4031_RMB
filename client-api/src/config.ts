@@ -13,7 +13,7 @@ export const config = {
     port: intFromEnv('CLIENT_API_PORT', 8080),
     aggregatorUrl: process.env.AGGREGATOR_URL || 'http://localhost:3000',
     aggregatorTimeoutMs: intFromEnv('AGGREGATOR_TIMEOUT_MS', 2000),
-    staleAfterMs: intFromEnv('STALE_AFTER_MS', 15000),
+    staleAfterMs: intFromEnv('STALE_AFTER_MS', 10000),
     maxInFlight: intFromEnv('MAX_IN_FLIGHT', 100),
     logLevel: process.env.LOG_LEVEL || 'info',
 };
