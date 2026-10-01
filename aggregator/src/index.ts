@@ -13,6 +13,14 @@ const BMKG_URL = process.env.BMKG_URL || 'http://localhost:8081';
 const PVMBG_URL = process.env.PVMBG_URL || 'http://localhost:8082';
 const X_BMKG_KEY = process.env.X_BMKG_KEY;
 const PVMBG_TOKEN = process.env.PVMBG_TOKEN;
+if (!X_BMKG_KEY || !/^bmkg_[0-9a-f]{64}$/.test(X_BMKG_KEY)) {
+    console.error('X_BMKG_KEY wajib diisi dengan format bmkg_<64 hex>');
+    process.exit(1);
+}
+if (!PVMBG_TOKEN || !/^pvmbg\.v1\.[A-Za-z0-9_-]{43}$/.test(PVMBG_TOKEN)) {
+    console.error('PVMBG_TOKEN wajib diisi dengan format pvmbg.v1.<43 karakter base64url>');
+    process.exit(1);
+}
 const POLLING_INTERVAL = parseInt(process.env.POLLING_INTERVAL_MS || '3000', 10); // 2-5s
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 
