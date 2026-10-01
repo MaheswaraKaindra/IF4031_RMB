@@ -1,10 +1,21 @@
 // App's Entry Point
 
 import express, { Request, Response, NextFunction } from 'express';
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 const app = express();
 const PORT = process.env.BMKG_PORT || 8081;
-const API_KEY = process.env.X_BMKG_KEY;
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+const API_KEY_SHA256 = process.env.X_BMKG_KEY_SHA256;
+if (!API_KEY_SHA256 || !SHA256_HEX.test(API_KEY_SHA256)) {
+    console.error('X_BMKG_KEY_SHA256 wajib diisi dengan hash SHA-256 (64 hex) dari API key BMKG');
+    process.exit(1);
+}
+
+const sha256 = (value: string) => createHash('sha256').update(value).digest();
+const API_KEY_DIGEST = Buffer.from(API_KEY_SHA256, 'hex');
 
 const EVENT_INTERVAL_MS = parseInt(process.env.BMKG_EVENT_INTERVAL_MS || '10000', 10); // new event every 10s (spec minimum)
 
@@ -49,7 +60,11 @@ setInterval(() => {
 app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path === '/health') return next();
     
-    if (req.headers['x-bmkg-key'] !== API_KEY) {
+    const key = req.headers['x-bmkg-key'];
+    if (typeof key !== 'string') {
+        return res.status(401).json({ error: 'Header X-BMKG-Key wajib disertakan' });
+    }
+    if (!timingSafeEqual(sha256(key), API_KEY_DIGEST)) {
         return res.status(401).json({ error: 'Kredensial tidak valid' });
     }
     
