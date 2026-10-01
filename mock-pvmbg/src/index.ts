@@ -1,10 +1,21 @@
 import express, { Request, Response, NextFunction } from 'express';
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PVMBG_PORT || 8082;
-const TOKEN = process.env.PVMBG_TOKEN;
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+const TOKEN_SHA256 = process.env.PVMBG_TOKEN_SHA256;
+if (!TOKEN_SHA256 || !SHA256_HEX.test(TOKEN_SHA256)) {
+    console.error('PVMBG_TOKEN_SHA256 wajib diisi dengan hash SHA-256 (64 hex) dari token PVMBG');
+    process.exit(1);
+}
+
+const sha256 = (value: string) => createHash('sha256').update(value).digest();
+const TOKEN_DIGEST = Buffer.from(TOKEN_SHA256, 'hex');
 
 let isOutage = false;
 let useNewSchema = false;
@@ -38,7 +49,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path === '/health') return next();
     
     const authHeader = req.headers.authorization;
-    if (!authHeader || authHeader !== `Bearer ${TOKEN}`) {
+    const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined;
+    if (bearer === undefined) {
+        return res.status(401).json({ error: 'Header Authorization: Bearer <pvmbg-token> wajib disertakan' });
+    }
+    if (!timingSafeEqual(sha256(bearer), TOKEN_DIGEST)) {
         return res.status(401).json({ error: 'Kredensial tidak valid' });
     }
 
