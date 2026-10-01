@@ -14,6 +14,8 @@ export interface HazardEvent {
 
 export type SourceName = 'BMKG' | 'PVMBG';
 
+export type Scope = 'events:read:summary' | 'events:read:raw';
+
 export type SourceStatuses = Record<SourceName, string | null>;
 
 export interface SourceFreshness {
