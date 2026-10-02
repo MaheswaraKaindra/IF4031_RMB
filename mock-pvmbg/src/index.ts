@@ -1,7 +1,9 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { logger, requestLogger } from './logger';
 
 const app = express();
+app.use(requestLogger);
 app.use(express.json());
 
 const PORT = process.env.PVMBG_PORT || 8082;
@@ -10,7 +12,7 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 const TOKEN_SHA256 = process.env.PVMBG_TOKEN_SHA256;
 if (!TOKEN_SHA256 || !SHA256_HEX.test(TOKEN_SHA256)) {
-    console.error('PVMBG_TOKEN_SHA256 wajib diisi dengan hash SHA-256 (64 hex) dari token PVMBG');
+    logger.fatal('PVMBG_TOKEN_SHA256 wajib diisi dengan hash SHA-256 (64 hex) dari token PVMBG');
     process.exit(1);
 }
 
@@ -54,6 +56,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
         return res.status(401).json({ error: 'Header Authorization: Bearer <pvmbg-token> wajib disertakan' });
     }
     if (!timingSafeEqual(sha256(bearer), TOKEN_DIGEST)) {
+        res.locals.log.warn('credential rejected');
         return res.status(401).json({ error: 'Kredensial tidak valid' });
     }
 
@@ -69,7 +72,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     }
 });
 
-app.get('/health', (req: Request, res: Response) => res.status(200).send('OK'));
+app.get('/health', (req: Request, res: Response) => res.status(200).json({ status: 'ok', service: 'mock-pvmbg' }));
 
 app.get('/volcanic-reports', (req: Request, res: Response) => {
     const since = req.query.since ? new Date(req.query.since as string) : new Date(0);
@@ -87,12 +90,22 @@ app.get('/volcanic-reports', (req: Request, res: Response) => {
 
 app.post('/admin/schema-version', (req, res) => {
     useNewSchema = !useNewSchema;
+    res.locals.log.info({ confidence_level_enabled: useNewSchema }, 'schema version toggled');
     res.json({ message: `Schema baru (confidence_level) diatur ke: ${useNewSchema}` });
 });
 
 app.post('/admin/outage', (req, res) => {
     isOutage = !isOutage;
+    res.locals.log.warn({ outage: isOutage }, 'outage toggled');
     res.json({ message: `Status outage PVMBG saat ini: ${isOutage}` });
 });
 
-app.listen(PORT, () => console.log(`Mock PVMBG berjalan di port ${PORT}`));
+const server = app.listen(PORT, () => logger.info({ port: PORT }, 'Mock PVMBG berjalan'));
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(signal, () => {
+        logger.info({ signal }, 'mock-pvmbg berhenti');
+        server.close(() => process.exit(0));
+        setTimeout(() => process.exit(1), 8000).unref();
+    });
+}

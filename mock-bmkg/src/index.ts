@@ -2,15 +2,17 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { logger, requestLogger } from './logger';
 
 const app = express();
+app.use(requestLogger);
 const PORT = process.env.BMKG_PORT || 8081;
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 const API_KEY_SHA256 = process.env.X_BMKG_KEY_SHA256;
 if (!API_KEY_SHA256 || !SHA256_HEX.test(API_KEY_SHA256)) {
-    console.error('X_BMKG_KEY_SHA256 wajib diisi dengan hash SHA-256 (64 hex) dari API key BMKG');
+    logger.fatal('X_BMKG_KEY_SHA256 wajib diisi dengan hash SHA-256 (64 hex) dari API key BMKG');
     process.exit(1);
 }
 
@@ -65,6 +67,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
         return res.status(401).json({ error: 'Header X-BMKG-Key wajib disertakan' });
     }
     if (!timingSafeEqual(sha256(key), API_KEY_DIGEST)) {
+        res.locals.log.warn('credential rejected');
         return res.status(401).json({ error: 'Kredensial tidak valid' });
     }
     
@@ -72,7 +75,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     setTimeout(next, delay);
 });
 
-app.get('/health', (req: Request, res: Response) => res.status(200).send('OK'));
+app.get('/health', (req: Request, res: Response) => res.status(200).json({ status: 'ok', service: 'mock-bmkg' }));
 
 app.get('/seismic-events', (req: Request, res: Response) => {
     const since = req.query.since ? new Date(req.query.since as string) : new Date(0);
@@ -85,4 +88,12 @@ app.get('/tsunami-warnings', (req: Request, res: Response) => {
     res.json(tsunamiWarnings);
 });
 
-app.listen(PORT, () => console.log(`Mock BMKG berjalan di port ${PORT}`));
+const server = app.listen(PORT, () => logger.info({ port: PORT }, 'Mock BMKG berjalan'));
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(signal, () => {
+        logger.info({ signal }, 'mock-bmkg berhenti');
+        server.close(() => process.exit(0));
+        setTimeout(() => process.exit(1), 8000).unref();
+    });
+}
