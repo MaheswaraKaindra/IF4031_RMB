@@ -1,9 +1,12 @@
 {
   "name": "consumers",
   "version": "1.0.0",
-  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "start:notifier": "node dist/notifier.js",
+    "start:dashboard": "node dist/dashboard.js",
+    "dev:notifier": "ts-node-dev --respawn src/notifier.ts",
+    "dev:dashboard": "ts-node-dev --respawn src/dashboard.ts"
   },
   "keywords": [],
   "author": "",
