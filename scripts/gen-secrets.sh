@@ -20,6 +20,8 @@ pvmbg_token="pvmbg.v1.$(b64url 32)"
 media_secret=$(b64url 32)
 field_team_secret=$(b64url 32)
 bnpb_ops_secret=$(b64url 32)
+mongo_password=$(openssl rand -hex 24)
+rabbitmq_password=$(openssl rand -hex 24)
 
 cat <<EOF
 X_BMKG_KEY=$bmkg_key
@@ -34,4 +36,6 @@ AUTH_CLIENT_FIELD_TEAM_SECRET=$field_team_secret
 AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256=$(sha256 "$field_team_secret")
 AUTH_CLIENT_BNPB_OPS_SECRET=$bnpb_ops_secret
 AUTH_CLIENT_BNPB_OPS_SECRET_SHA256=$(sha256 "$bnpb_ops_secret")
+MONGO_PASSWORD=$mongo_password
+RABBITMQ_PASSWORD=$rabbitmq_password
 EOF
