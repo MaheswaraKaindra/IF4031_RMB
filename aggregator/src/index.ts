@@ -1,12 +1,16 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import axios from 'axios';
 import amqp from 'amqplib';
+import type { Logger } from 'pino';
 
 import { mapSeismicToHazard, mapVolcanicToHazard, type HazardEvent } from './utils/mapper.js';
-import { connectMongo } from './db/mongo.js';
+import { closeMongo, connectMongo, pingMongo } from './db/mongo.js';
 import { upsertHazard, markSourceSuccess, getSourceStatuses, findHazards } from './db/hazardRepository.js';
+import { CORRELATION_HEADER, errorMessage, getLog, logger, requestLogger, timed } from './logger.js';
 
 const app = express();
+app.use(requestLogger);
 const PORT = process.env.AGGREGATOR_PORT || 3000;
 
 const BMKG_URL = process.env.BMKG_URL || 'http://localhost:8081';
@@ -14,57 +18,77 @@ const PVMBG_URL = process.env.PVMBG_URL || 'http://localhost:8082';
 const X_BMKG_KEY = process.env.X_BMKG_KEY;
 const PVMBG_TOKEN = process.env.PVMBG_TOKEN;
 if (!X_BMKG_KEY || !/^bmkg_[0-9a-f]{64}$/.test(X_BMKG_KEY)) {
-    console.error('X_BMKG_KEY wajib diisi dengan format bmkg_<64 hex>');
+    logger.fatal('X_BMKG_KEY wajib diisi dengan format bmkg_<64 hex>');
     process.exit(1);
 }
 if (!PVMBG_TOKEN || !/^pvmbg\.v1\.[A-Za-z0-9_-]{43}$/.test(PVMBG_TOKEN)) {
-    console.error('PVMBG_TOKEN wajib diisi dengan format pvmbg.v1.<43 karakter base64url>');
+    logger.fatal('PVMBG_TOKEN wajib diisi dengan format pvmbg.v1.<43 karakter base64url>');
     process.exit(1);
 }
 const POLLING_INTERVAL = parseInt(process.env.POLLING_INTERVAL_MS || '3000', 10); // 2-5s
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
+const EXCHANGE = 'hazard_events';
+const RECONNECT_DELAY_MS = 5000;
 
 let lastFetchBMKG = new Date(0).toISOString();
 let lastFetchPVMBG = new Date(0).toISOString();
 let isPolling = false;
-let rabbitChannel: amqp.Channel;
+let rabbitChannel: amqp.Channel | undefined;
+let rabbitConnection: amqp.ChannelModel | undefined;
+let shuttingDown = false;
 
-
-async function initRabbitMQ() {
+async function initRabbitMQ(): Promise<void> {
     try {
         const connection = await amqp.connect(RABBITMQ_URL);
-        rabbitChannel = await connection.createChannel();
-        await rabbitChannel.assertExchange('hazard_events', 'fanout', { durable: true });
-        console.log('[Aggregator] Berhasil terhubung ke RabbitMQ');
+        const channel = await connection.createChannel();
+        await channel.assertExchange(EXCHANGE, 'fanout', { durable: true });
+
+        connection.on('error', (error) => logger.warn({ error: errorMessage(error) }, 'koneksi RabbitMQ error'));
+        connection.on('close', () => {
+            rabbitChannel = undefined;
+            rabbitConnection = undefined;
+            if (shuttingDown) return;
+            logger.warn({ retry_in_ms: RECONNECT_DELAY_MS }, 'koneksi RabbitMQ terputus');
+            setTimeout(initRabbitMQ, RECONNECT_DELAY_MS);
+        });
+
+        rabbitConnection = connection;
+        rabbitChannel = channel;
+        logger.info('Berhasil terhubung ke RabbitMQ');
     } catch (error) {
-        console.error('[Aggregator] Gagal terhubung ke RabbitMQ:', error);
+        logger.error({ error: errorMessage(error), retry_in_ms: RECONNECT_DELAY_MS }, 'Gagal terhubung ke RabbitMQ');
+        setTimeout(initRabbitMQ, RECONNECT_DELAY_MS);
     }
 }
 
-async function fetchBMKG() {
-    const eventsRes = await axios.get(`${BMKG_URL}/seismic-events?since=${lastFetchBMKG}`, {
-        headers: { 'X-BMKG-Key': X_BMKG_KEY },
-        timeout: 2000
-    });
-    
-    const warningsRes = await axios.get(`${BMKG_URL}/tsunami-warnings`, {
-        headers: { 'X-BMKG-Key': X_BMKG_KEY }
-    });
+async function fetchBMKG(log: Logger, correlationId: string) {
+    const headers = { 'X-BMKG-Key': X_BMKG_KEY, [CORRELATION_HEADER]: correlationId };
+    const eventsRes = await timed(log, 'bmkg', 'GET /seismic-events', () =>
+        axios.get(`${BMKG_URL}/seismic-events?since=${lastFetchBMKG}`, { headers, timeout: 2000 })
+    );
+    const warningsRes = await timed(log, 'bmkg', 'GET /tsunami-warnings', () =>
+        axios.get(`${BMKG_URL}/tsunami-warnings`, { headers, timeout: 2000 })
+    );
 
     return { events: eventsRes.data, warnings: warningsRes.data };
 }
 
-async function fetchPVMBG() {
-    const res = await axios.get(`${PVMBG_URL}/volcanic-reports?since=${lastFetchPVMBG}`, {
-        headers: { 'Authorization': `Bearer ${PVMBG_TOKEN}` },
-        timeout: 5000
-    });
+async function fetchPVMBG(log: Logger, correlationId: string) {
+    const res = await timed(log, 'pvmbg', 'GET /volcanic-reports', () =>
+        axios.get(`${PVMBG_URL}/volcanic-reports?since=${lastFetchPVMBG}`, {
+            headers: { Authorization: `Bearer ${PVMBG_TOKEN}`, [CORRELATION_HEADER]: correlationId },
+            timeout: 5000,
+        })
+    );
     return res.data;
 }
 
 async function pollData() {
+    const correlationId = `poll-${randomUUID()}`;
+    const log = logger.child({ correlation_id: correlationId });
+
     if (isPolling) {
-        console.warn('Poll sebelumnya masih berjalan, tick ini dilewati');
+        log.warn('Poll sebelumnya masih berjalan, tick ini dilewati');
         return;
     }
     isPolling = true;
@@ -73,8 +97,8 @@ async function pollData() {
         const fetchTime = new Date().toISOString();
 
         const [bmkgResult, pvmbgResult] = await Promise.allSettled([
-            fetchBMKG(),
-            fetchPVMBG()
+            fetchBMKG(log, correlationId),
+            fetchPVMBG(log, correlationId)
         ]);
 
         const newHazards: HazardEvent[] = [];
@@ -90,7 +114,7 @@ async function pollData() {
             });
             bmkgFetched = true;
         } else {
-            console.error('Gagal mengambil data BMKG:', bmkgResult.reason.message);
+            log.error({ error: errorMessage(bmkgResult.reason) }, 'Gagal mengambil data BMKG');
         }
 
         // Proses Data PVMBG
@@ -101,19 +125,26 @@ async function pollData() {
             });
             pvmbgFetched = true;
         } else {
-            console.warn('PVMBG tidak merespons (Outage / Timeout):', pvmbgResult.reason.message);
+            log.warn({ error: errorMessage(pvmbgResult.reason) }, 'PVMBG tidak merespons (Outage / Timeout)');
         }
 
         // Save ke MongoDB
         const inserted: HazardEvent[] = [];
         let saveFailed = false;
+        const saveStart = performance.now();
         for (const hazard of newHazards) {
             try {
                 if (await upsertHazard(hazard)) inserted.push(hazard);
             } catch (error) {
                 saveFailed = true;
-                console.error(`Gagal menyimpan HazardEvent ${hazard.source_ref_id}:`, error instanceof Error ? error.message : String(error));
+                log.error({ source_ref_id: hazard.source_ref_id, error: errorMessage(error) }, 'Gagal menyimpan HazardEvent');
             }
+        }
+        if (newHazards.length > 0) {
+            log.info(
+                { target: 'mongo', call: 'upsert hazards', count: newHazards.length, inserted: inserted.length, duration_ms: Math.round(performance.now() - saveStart) },
+                'outgoing call ok'
+            );
         }
 
         if (!saveFailed) {
@@ -128,21 +159,36 @@ async function pollData() {
         }
 
         // Publish ke RabbitMQ
-        if (rabbitChannel) {
+        const channel = rabbitChannel;
+        if (channel) {
             inserted.forEach(hazard => {
                 const message = Buffer.from(JSON.stringify(hazard));
-                rabbitChannel.publish('hazard_events', '', message);
-                console.log(`Mempublikasikan HazardEvent: ${hazard.hazard_id}`);
+                channel.publish(EXCHANGE, '', message, {
+                    contentType: 'application/json',
+                    messageId: hazard.hazard_id,
+                    correlationId,
+                });
+                log.info({ hazard_id: hazard.hazard_id, source: hazard.source, severity: hazard.severity }, 'Mempublikasikan HazardEvent');
             });
+        } else if (inserted.length > 0) {
+            log.warn({ skipped: inserted.length }, 'RabbitMQ belum terhubung, HazardEvent tidak dipublikasikan');
         }
     } catch (error) {
-        console.error('Poll gagal:', error instanceof Error ? error.message : String(error));
+        log.error({ error: errorMessage(error) }, 'Poll gagal');
     } finally {
         isPolling = false;
     }
 }
 
-app.get('/health', (req, res) => res.status(200).send('Aggregator Sehat'));
+app.get('/health', async (req, res) => {
+    const storeConnected = await pingMongo(1000);
+    res.status(storeConnected ? 200 : 503).json({
+        status: storeConnected ? 'ok' : 'degraded',
+        service: 'aggregator',
+        store_connected: storeConnected,
+        broker_connected: rabbitChannel !== undefined,
+    });
+});
 
 const HAZARD_TYPES = ['SEISMIC', 'VOLCANIC'] as const;
 const SEVERITIES = ['NORMAL', 'WASPADA', 'SIAGA', 'AWAS'] as const;
@@ -180,34 +226,50 @@ app.get('/internal/events', async (req, res) => {
     }
 
     try {
-        const events = await findHazards({ hazard_type, severity, source, since }, limit);
+        const events = await timed(getLog(res), 'mongo', 'find hazards', () =>
+            findHazards({ hazard_type, severity, source, since }, limit)
+        );
         res.json({ events });
     } catch (error) {
-        console.error('Gagal membaca events:', error instanceof Error ? error.message : String(error));
+        getLog(res).error({ error: errorMessage(error) }, 'Gagal membaca events');
         res.status(503).json({ error: 'Canonical Store tidak tersedia' });
     }
 });
 
 app.get('/internal/status', async (req, res) => {
     try {
-        res.json(await getSourceStatuses());
+        res.json(await timed(getLog(res), 'mongo', 'find source status', getSourceStatuses));
     } catch (error) {
-        console.error('Gagal membaca status:', error instanceof Error ? error.message : String(error));
+        getLog(res).error({ error: errorMessage(error) }, 'Gagal membaca status');
         res.status(503).json({ error: 'Canonical Store tidak tersedia' });
     }
 });
 
-app.listen(PORT, async () => {
-    console.log(`Aggregator API berjalan di port ${PORT}`);
+const server = app.listen(PORT, async () => {
+    logger.info({ port: PORT, polling_interval_ms: POLLING_INTERVAL }, 'Aggregator API berjalan');
 
     try {
         await connectMongo();
     } catch (error) {
-        console.error('Gagal terhubung ke MongoDB:', error instanceof Error ? error.message : String(error));
+        logger.fatal({ error: errorMessage(error) }, 'Gagal terhubung ke MongoDB');
         process.exit(1);
     }
 
     await initRabbitMQ();
 
-    setInterval(pollData, POLLING_INTERVAL);
+    const poller = setInterval(pollData, POLLING_INTERVAL);
+
+    for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+        process.on(signal, () => {
+            logger.info({ signal }, 'aggregator berhenti');
+            shuttingDown = true;
+            clearInterval(poller);
+            server.close(async () => {
+                await rabbitConnection?.close().catch(() => undefined);
+                await closeMongo();
+                process.exit(0);
+            });
+            setTimeout(() => process.exit(1), 8000).unref();
+        });
+    }
 });

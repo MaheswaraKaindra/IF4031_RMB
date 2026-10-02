@@ -1,5 +1,6 @@
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import type { HazardEvent } from '../utils/mapper.js';
+import { logger } from '../logger.js';
 
 export interface SourceStatusDoc {
     _id: 'BMKG' | 'PVMBG';
@@ -19,7 +20,14 @@ export async function connectMongo(): Promise<void> {
 
     await getHazards().createIndex({ source: 1, source_ref_id: 1 }, { unique: true });
     await getHazards().createIndex({ occurred_at: -1 });
-    console.log('Berhasil terhubung ke MongoDB');
+    logger.info('Berhasil terhubung ke MongoDB');
+}
+
+export async function pingMongo(timeoutMs: number): Promise<boolean> {
+    if (!db) return false;
+    const timeout = new Promise<false>((resolve) => setTimeout(resolve, timeoutMs, false).unref());
+    const ping = db.command({ ping: 1 }).then(() => true, () => false);
+    return Promise.race([ping, timeout]);
 }
 
 export async function closeMongo(): Promise<void> {
