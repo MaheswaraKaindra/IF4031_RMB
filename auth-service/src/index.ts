@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { correlationId, getLog } from './middleware/correlationId.js';
+import { throttleFailures } from './middleware/failureThrottle.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { tokenRouter } from './routes/token.js';
 
@@ -16,6 +17,7 @@ app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok', service: 'auth-service' });
 });
 
+app.use(['/token', '/refresh'], throttleFailures);
 app.use(tokenRouter);
 
 app.use((_req: Request, res: Response) => {

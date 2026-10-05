@@ -33,6 +33,8 @@ export const config = {
     jwtAudience: process.env.JWT_AUDIENCE || 'bnpb-client-api',
     accessTokenTtlSeconds: intFromEnv('ACCESS_TOKEN_TTL_SECONDS', 60),
     refreshTokenTtlSeconds: intFromEnv('REFRESH_TOKEN_TTL_SECONDS', 3600),
+    maxFailedAttempts: intFromEnv('AUTH_MAX_FAILED_ATTEMPTS', 10),
+    failureWindowSeconds: intFromEnv('AUTH_FAILURE_WINDOW_SECONDS', 60),
     clientSecretHashes: {
         media: sha256HexFromEnv('AUTH_CLIENT_MEDIA_SECRET_SHA256'),
         'field-team': sha256HexFromEnv('AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256'),

@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { authenticateClient, findClient, type Client } from '../clients.js';
 import { config } from '../config.js';
 import { getLog } from '../middleware/correlationId.js';
+import { recordFailure } from '../middleware/failureThrottle.js';
 import { consumeRefreshToken, issueRefreshToken } from '../refreshStore.js';
 import { signAccessToken } from '../tokens.js';
 
@@ -40,6 +41,7 @@ tokenRouter.post('/token', async (req, res) => {
 
     const client = authenticateClient(client_id, client_secret);
     if (client === undefined) {
+        recordFailure(req.ip);
         getLog(res).warn({ client_id }, 'client authentication failed');
         oauthError(res, 401, 'invalid_client', 'client_id or client_secret is invalid');
         return;
@@ -57,6 +59,7 @@ tokenRouter.post('/refresh', async (req, res) => {
 
     const result = consumeRefreshToken(refresh_token);
     if (!result.ok) {
+        recordFailure(req.ip);
         const log = getLog(res);
         if (result.reason === 'reused') log.warn({ client_id: result.clientId }, 'refresh token reuse detected, family revoked');
         else log.info({ reason: result.reason, client_id: result.clientId }, 'refresh rejected');
