@@ -11,21 +11,38 @@ export interface HazardEvent {
     longitude: number;
     occurred_at: string;
     ingested_at: string;
-    attributes: Record<string, any>; // Holds dynamic fields such as confidence_level
+    attributes: Record<string, any>;
 }
 
-// Map threat_level string (e.g. from a tsunami warning) to canonical severity.
-// Exported so aggregator can recompute severity when a late warning arrives.
 export function recomputeSeverityFromWarning(tsunamiWarning: any): HazardEvent['severity'] {
     const upper = (tsunamiWarning?.threat_level ?? '').toUpperCase() as HazardEvent['severity'];
     const valid: ReadonlyArray<HazardEvent['severity']> = ['NORMAL', 'WASPADA', 'SIAGA', 'AWAS'];
     return valid.includes(upper) ? upper : 'WASPADA'; // conservative default
 }
 
+const SEVERITY_RANK: Record<HazardEvent['severity'], number> = { NORMAL: 0, WASPADA: 1, SIAGA: 2, AWAS: 3 };
+
+export function warningRank(tsunamiWarning: any): number {
+    return SEVERITY_RANK[recomputeSeverityFromWarning(tsunamiWarning)];
+}
+
+// An event can have several warnings. The spec says AWAS applies when a warning with Awas exists, so the
+// strongest one wins, and among equally strong warnings the most recently issued one.
+export function pickStrongestWarning(warnings: any[], eventId: string): any | undefined {
+    let best: any;
+    for (const w of warnings) {
+        if (w?.related_event_id !== eventId) continue;
+        if (best === undefined) {
+            best = w;
+            continue;
+        }
+        const diff = warningRank(w) - warningRank(best);
+        if (diff > 0 || (diff === 0 && String(w.issued_at ?? '') > String(best.issued_at ?? ''))) best = w;
+    }
+    return best;
+}
+
 export function mapSeismicToHazard(raw: any, tsunamiWarning?: any): HazardEvent {
-    // Destructure canonical fields; collect everything else into unknownFields.
-    // This mirrors the volcanic mapper so the declared P1 "unknown fields → attributes"
-    // policy is enforced uniformly for both BMKG and PVMBG sources.
     const {
         event_id, magnitude, depth_km, epicenter_lat, epicenter_lon,
         region_name, occurred_at, potential_tsunami,
@@ -63,9 +80,20 @@ export function mapSeismicToHazard(raw: any, tsunamiWarning?: any): HazardEvent 
     };
 }
 
+// alert_level is mapped directly to the canonical enum. A missing or unknown level (for example a new
+// enum value) is an unsupported schema change: it throws, so the aggregator skips and logs that one
+// record instead of storing an invalid severity.
+function severityFromAlertLevel(alertLevel: unknown): HazardEvent['severity'] {
+    const upper = typeof alertLevel === 'string' ? alertLevel.toUpperCase() : '';
+    const valid: ReadonlyArray<HazardEvent['severity']> = ['NORMAL', 'WASPADA', 'SIAGA', 'AWAS'];
+    if (!valid.includes(upper as HazardEvent['severity'])) {
+        throw new Error(`Unsupported alert_level: ${String(alertLevel)}`);
+    }
+    return upper as HazardEvent['severity'];
+}
+
 export function mapVolcanicToHazard(raw: any): HazardEvent {
-    // Complete volcano reference table (VOLC-01 … VOLC-05).
-    // Without this, VOLC-03/04/05 would fall back to coordinates 0,0 — a spec violation.
+    // BNPB's static reference table for volcano names and coordinates
     const volcanoDict: Record<string, { name: string; lat: number; lon: number }> = {
         'VOLC-01': { name: 'Mount Prikitiw', lat: -7.542, lon: 110.446 },
         'VOLC-02': { name: 'Mount Skypiea',  lat: -8.108, lon: 112.308 },
@@ -87,9 +115,7 @@ export function mapVolcanicToHazard(raw: any): HazardEvent {
         source: 'PVMBG',
         source_ref_id: report_id,
         hazard_type: 'VOLCANIC',
-        // toUpperCase() can throw if alert_level is null/undefined; let it propagate so
-        // the per-record try/catch in the aggregator can skip and log the bad record.
-        severity: (alert_level as string).toUpperCase() as HazardEvent['severity'],
+        severity: severityFromAlertLevel(alert_level),
         area_name: volcanoInfo.name,
         latitude: volcanoInfo.lat,
         longitude: volcanoInfo.lon,

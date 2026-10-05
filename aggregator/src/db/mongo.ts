@@ -4,7 +4,9 @@ import { logger } from '../logger.js';
 
 export interface SourceStatusDoc {
     _id: 'BMKG' | 'PVMBG';
-    last_success_at: string;
+    last_success_at?: string;
+    // Present only while the latest poll of this source failed, removed again by the next success
+    last_failure_at?: string;
 }
 
 let client: MongoClient | undefined;
