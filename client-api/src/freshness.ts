@@ -1,12 +1,14 @@
 import { config } from './config.js';
-import type { SourceFreshness, SourceName, SourceStatuses } from './types.js';
+import type { SourceFreshness, SourceName, SourceStatus, SourceStatuses } from './types.js';
 
-function describeSource(lastSuccessAt: string | null, now: number): SourceFreshness {
-    const stale = lastSuccessAt === null || now - Date.parse(lastSuccessAt) > config.staleAfterMs;
+function describeSource(status: SourceStatus, now: number): SourceFreshness {
+    const { last_success_at, last_failure_at } = status;
+    const stale =
+        last_success_at === null || last_failure_at !== null || now - Date.parse(last_success_at) > config.staleAfterMs;
     return {
-        last_success_at: lastSuccessAt,
+        last_success_at,
         stale,
-        stale_since: stale ? lastSuccessAt : null,
+        stale_since: stale ? last_success_at : null,
     };
 }
 
