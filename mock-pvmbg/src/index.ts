@@ -25,16 +25,16 @@ let useNewSchema = false;
 const REPORT_INTERVAL_MS = parseInt(process.env.PVMBG_REPORT_INTERVAL_MS || '10000', 10);
 const DELAY_MIN_MS = parseInt(process.env.PVMBG_DELAY_MIN_MS || '500', 10);
 const DELAY_MAX_MS = parseInt(process.env.PVMBG_DELAY_MAX_MS || '3000', 10);
+const RUN_ID = Date.now().toString(36);
 
 function createVolcanicReport(n: number, reportedAt: Date) {
     return {
-        report_id: `REP-VOLC-${2000 + n}`,
+        report_id: `REP-VOLC-${RUN_ID}-${n}`,
         volcano_id: `VOLC-0${(n % 5) + 1}`,
-        alert_level: ['NORMAL', 'WASPADA', 'SIAGA', 'AWAS'][Math.floor(Math.random() * 4)],
+        alert_level: ['Normal', 'Waspada', 'Siaga', 'Awas'][Math.floor(Math.random() * 4)],
         eruption_count_24h: Math.floor(Math.random() * 10),
         ash_column_height_m: +(Math.random() * 5000).toFixed(1),
         reported_at: reportedAt.toISOString(),
-        // confidence_level
     };
 }
 

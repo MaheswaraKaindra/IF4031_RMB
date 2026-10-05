@@ -1,5 +1,3 @@
-// App's Entry Point
-
 import express, { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { logger, requestLogger } from './logger';
@@ -19,11 +17,13 @@ if (!API_KEY_SHA256 || !SHA256_HEX.test(API_KEY_SHA256)) {
 const sha256 = (value: string) => createHash('sha256').update(value).digest();
 const API_KEY_DIGEST = Buffer.from(API_KEY_SHA256, 'hex');
 
-const EVENT_INTERVAL_MS = parseInt(process.env.BMKG_EVENT_INTERVAL_MS || '10000', 10); // new event every 10s (spec minimum)
+const EVENT_INTERVAL_MS = parseInt(process.env.BMKG_EVENT_INTERVAL_MS || '10000', 10);
+const WARNING_DELAY_MS = parseInt(process.env.BMKG_WARNING_DELAY_MS || '0', 10);
+const RUN_ID = Date.now().toString(36);
 
 function createSeismicEvent(n: number, occurredAt: Date) {
     return {
-        event_id: `EV-BMKG-${1000 + n}`,
+        event_id: `EV-BMKG-${RUN_ID}-${n}`,
         magnitude: +(Math.random() * (7.5 - 3.0) + 3.0).toFixed(1),
         depth_km: +(Math.random() * 50 + 10).toFixed(1),
         epicenter_lat: -8.5 + Math.random(),
@@ -38,7 +38,7 @@ function createTsunamiWarning(ev: ReturnType<typeof createSeismicEvent>, issuedA
     return {
         warning_id: `WARN-${ev.event_id}`,
         related_event_id: ev.event_id,
-        threat_level: ev.magnitude >= 6.5 ? 'AWAS' : (ev.magnitude >= 5.0 ? 'SIAGA' : 'WASPADA'),
+        threat_level: ev.magnitude >= 6.5 ? 'Awas' : (ev.magnitude >= 5.0 ? 'Siaga' : 'Waspada'),
         affected_zones: [ev.region_name, 'Surrounding Coast'],
         estimated_arrival: new Date(new Date(ev.occurred_at).getTime() + 1800000).toISOString(),
         issued_at: (issuedAt ?? new Date(ev.occurred_at)).toISOString()
@@ -58,7 +58,13 @@ setInterval(() => {
     const now = new Date();
     const ev = createSeismicEvent(nextEventNumber++, now);
     seismicEvents.push(ev);
-    if (ev.potential_tsunami) tsunamiWarnings.push(createTsunamiWarning(ev, now));
+    if (ev.potential_tsunami) {
+        if (WARNING_DELAY_MS > 0) {
+            setTimeout(() => tsunamiWarnings.push(createTsunamiWarning(ev, new Date())), WARNING_DELAY_MS);
+        } else {
+            tsunamiWarnings.push(createTsunamiWarning(ev, now));
+        }
+    }
 }, EVENT_INTERVAL_MS);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
