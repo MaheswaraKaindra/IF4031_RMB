@@ -14,7 +14,7 @@ eventsRouter.get('/', async (req, res) => {
     const limit = parseLimit(req.query.limit, 50);
     const requestedFields = parseFields(req.query.fields, ALL_FIELDS);
     if (hazard_type === null || severity === null || limit === null || requestedFields === null) {
-        res.status(400).json({ error: 'hazard_type, severity, limit, atau fields tidak valid' });
+        res.status(400).json({ error: 'hazard_type, severity, limit, or fields is invalid' });
         return;
     }
 
@@ -24,7 +24,7 @@ eventsRouter.get('/', async (req, res) => {
         getLog(res).warn({ scope, denied_fields: denied }, 'raw field request denied');
         res.status(403).json({
             error: 'insufficient_scope',
-            error_description: `Scope ${scope} tidak berhak mengakses field: ${denied.join(', ')}`,
+            error_description: `Scope ${scope} is not authorized to access fields: ${denied.join(', ')}`,
         });
         return;
     }
@@ -39,7 +39,7 @@ eventsRouter.get('/', async (req, res) => {
 
     if (eventsResult.status === 'rejected') {
         res.status(503).json({
-            error: 'Data belum tersedia, coba lagi sebentar',
+            error: 'Data is not yet available, please try again shortly',
             correlation_id: ctx.correlationId,
         });
         return;

@@ -19,28 +19,28 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use(tokenRouter);
 
 app.use((_req: Request, res: Response) => {
-    res.status(404).json({ error: 'Tidak ditemukan' });
+    res.status(404).json({ error: 'Not found' });
 });
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (typeof err === 'object' && err !== null && 'type' in err && err.type === 'entity.parse.failed') {
-        res.status(400).json({ error: 'invalid_request', error_description: 'Body harus berupa JSON yang valid' });
+        res.status(400).json({ error: 'invalid_request', error_description: 'Body must be valid JSON' });
         return;
     }
     getLog(res).error({ error: err instanceof Error ? err.message : String(err) }, 'unhandled error');
-    res.status(500).json({ error: 'Terjadi kesalahan pada server' });
+    res.status(500).json({ error: 'Internal server error' });
 });
 
 const server = app.listen(config.port, () => {
     logger.info(
         { port: config.port, access_token_ttl_s: config.accessTokenTtlSeconds, refresh_token_ttl_s: config.refreshTokenTtlSeconds },
-        'auth-service berjalan'
+        'auth-service started'
     );
 });
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
-        logger.info({ signal }, 'auth-service berhenti');
+        logger.info({ signal }, 'auth-service stopped');
         server.close(() => process.exit(0));
         setTimeout(() => process.exit(1), 8000).unref();
     });

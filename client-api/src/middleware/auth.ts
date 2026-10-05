@@ -18,7 +18,7 @@ function reject(res: Response, status: 401 | 403, error: string, description: st
 export async function auth(req: Request, res: Response, next: NextFunction): Promise<void> {
     const header = req.header('authorization');
     if (header === undefined || !header.startsWith('Bearer ')) {
-        reject(res, 401, 'invalid_token', 'Header Authorization: Bearer <token> wajib disertakan');
+        reject(res, 401, 'invalid_token', 'Authorization header: Bearer <token> is required');
         return;
     }
 
@@ -31,7 +31,7 @@ export async function auth(req: Request, res: Response, next: NextFunction): Pro
         });
 
         if (!SCOPES.includes(payload.scope as Scope)) {
-            reject(res, 403, 'insufficient_scope', 'Scope token tidak dikenali');
+            reject(res, 403, 'insufficient_scope', 'Unrecognized token scope');
             return;
         }
 
@@ -41,11 +41,11 @@ export async function auth(req: Request, res: Response, next: NextFunction): Pro
         next();
     } catch (error) {
         if (error instanceof errors.JWTExpired) {
-            reject(res, 401, 'token_expired', 'Access token sudah kedaluwarsa, lakukan refresh');
+            reject(res, 401, 'token_expired', 'Access token has expired, please refresh');
             return;
         }
         getLog(res).warn({ error: error instanceof Error ? error.message : String(error) }, 'token rejected');
-        reject(res, 401, 'invalid_token', 'Access token tidak valid');
+        reject(res, 401, 'invalid_token', 'Invalid access token');
     }
 }
 

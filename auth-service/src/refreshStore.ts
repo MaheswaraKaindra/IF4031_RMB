@@ -12,7 +12,7 @@ export type RotateResult =
     | { ok: true; clientId: string; family: string }
     | { ok: false; reason: 'unknown' | 'expired' | 'reused'; clientId?: string };
 
-// Disimpan berdasarkan hash, sehingga isi store tidak bisa dipakai langsung sebagai refresh token
+// Stored by hash, so the store contents cannot be used directly as a refresh token
 const entries = new Map<string, RefreshEntry>();
 
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');

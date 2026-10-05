@@ -4,7 +4,7 @@ function intFromEnv(name: string, fallback: number): number {
 
     const value = Number(raw);
     if (!Number.isInteger(value) || value <= 0) {
-        throw new Error(`${name} harus berupa bilangan bulat positif`);
+        throw new Error(`${name} must be a positive integer`);
     }
     return value;
 }
@@ -12,7 +12,7 @@ function intFromEnv(name: string, fallback: number): number {
 function requiredEnv(name: string): string {
     const value = process.env[name];
     if (value === undefined || value === '') {
-        throw new Error(`${name} wajib diisi`);
+        throw new Error(`${name} is required`);
     }
     return value;
 }

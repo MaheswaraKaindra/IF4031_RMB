@@ -4,7 +4,7 @@ function intFromEnv(name: string, fallback: number): number {
 
     const value = Number(raw);
     if (!Number.isInteger(value) || value <= 0) {
-        throw new Error(`${name} harus berupa bilangan bulat positif`);
+        throw new Error(`${name} must be a positive integer`);
     }
     return value;
 }
@@ -12,7 +12,7 @@ function intFromEnv(name: string, fallback: number): number {
 function requiredEnv(name: string): string {
     const value = process.env[name];
     if (value === undefined || value === '') {
-        throw new Error(`${name} wajib diisi`);
+        throw new Error(`${name} is required`);
     }
     return value;
 }
@@ -20,7 +20,7 @@ function requiredEnv(name: string): string {
 function sha256HexFromEnv(name: string): string {
     const value = requiredEnv(name);
     if (!/^[0-9a-f]{64}$/.test(value)) {
-        throw new Error(`${name} harus berupa hash SHA-256 (64 hex)`);
+        throw new Error(`${name} must be a SHA-256 hash (64 hex)`);
     }
     return value;
 }

@@ -60,3 +60,31 @@ export async function getSourceStatuses(): Promise<SourceStatuses> {
     }
     return statuses;
 }
+
+export async function findHazardBySourceRef(
+    source: HazardEvent['source'],
+    sourceRefId: string
+): Promise<HazardEvent | null> {
+    const doc = await getHazards().findOne({ source, source_ref_id: sourceRefId });
+    if (!doc) return null;
+    const { _id, ...rest } = doc as any;
+    return rest as HazardEvent;
+}
+
+export async function updateHazardSeverity(
+    hazardId: string,
+    newSeverity: HazardEvent['severity'],
+    tsunamiWarning: any
+): Promise<boolean> {
+    const result = await getHazards().updateOne(
+        { hazard_id: hazardId },
+        {
+            $set: {
+                severity: newSeverity,
+                'attributes.tsunami_warning': tsunamiWarning,
+                ingested_at: new Date().toISOString(),
+            },
+        }
+    );
+    return result.modifiedCount > 0;
+}

@@ -1,7 +1,7 @@
 {
   "name": "mock-pvmbg",
   "version": "1.0.0",
-  "description": "Mock Service PVMBG untuk AAT M1",
+  "description": "Mock PVMBG Service for AAT M1",
   "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",

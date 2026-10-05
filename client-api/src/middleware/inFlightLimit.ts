@@ -11,7 +11,7 @@ export function inFlightLimit(max: number): RequestHandler {
 
         if (inFlight >= max) {
             res.setHeader('Retry-After', '1');
-            res.status(429).json({ error: 'Terlalu banyak permintaan, coba lagi sebentar' });
+            res.status(429).json({ error: 'Too many requests, please try again shortly' });
             return;
         }
 

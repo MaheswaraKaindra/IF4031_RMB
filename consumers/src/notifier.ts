@@ -4,11 +4,11 @@ runConsumer({
     service: 'consumer-notifier',
     queue: 'q_field_notifier',
     handle: (event, log) => {
-        // Kirim notifikasi (SIAGA, AWAS)
+        // Send notification (SIAGA, AWAS)
         if (event.severity === 'SIAGA' || event.severity === 'AWAS') {
-            log.warn({ hazard_id: event.hazard_id, area_name: event.area_name, severity: event.severity }, 'MENGIRIM PERINGATAN DARURAT');
+            log.warn({ hazard_id: event.hazard_id, area_name: event.area_name, severity: event.severity }, 'SENDING EMERGENCY ALERT');
         } else {
-            log.info({ hazard_id: event.hazard_id, severity: event.severity }, 'Event diabaikan');
+            log.info({ hazard_id: event.hazard_id, severity: event.severity }, 'Event ignored');
         }
     },
 });

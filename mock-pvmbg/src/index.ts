@@ -12,7 +12,7 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 const TOKEN_SHA256 = process.env.PVMBG_TOKEN_SHA256;
 if (!TOKEN_SHA256 || !SHA256_HEX.test(TOKEN_SHA256)) {
-    logger.fatal('PVMBG_TOKEN_SHA256 wajib diisi dengan hash SHA-256 (64 hex) dari token PVMBG');
+    logger.fatal('PVMBG_TOKEN_SHA256 must be set to the SHA-256 hash (64 hex chars) of the PVMBG token');
     process.exit(1);
 }
 
@@ -30,7 +30,7 @@ function createVolcanicReport(n: number, reportedAt: Date) {
     return {
         report_id: `REP-VOLC-${2000 + n}`,
         volcano_id: `VOLC-0${(n % 5) + 1}`,
-        alert_level: ['Normal', 'Waspada', 'Siaga', 'Awas'][Math.floor(Math.random() * 4)],
+        alert_level: ['NORMAL', 'WASPADA', 'SIAGA', 'AWAS'][Math.floor(Math.random() * 4)],
         eruption_count_24h: Math.floor(Math.random() * 10),
         ash_column_height_m: +(Math.random() * 5000).toFixed(1),
         reported_at: reportedAt.toISOString(),
@@ -53,11 +53,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
     const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined;
     if (bearer === undefined) {
-        return res.status(401).json({ error: 'Header Authorization: Bearer <pvmbg-token> wajib disertakan' });
+        return res.status(401).json({ error: 'Authorization header: Bearer <pvmbg-token> is required' });
     }
     if (!timingSafeEqual(sha256(bearer), TOKEN_DIGEST)) {
         res.locals.log.warn('credential rejected');
-        return res.status(401).json({ error: 'Kredensial tidak valid' });
+        return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     if (isOutage && !req.path.startsWith('/admin')) {
@@ -91,20 +91,20 @@ app.get('/volcanic-reports', (req: Request, res: Response) => {
 app.post('/admin/schema-version', (req, res) => {
     useNewSchema = !useNewSchema;
     res.locals.log.info({ confidence_level_enabled: useNewSchema }, 'schema version toggled');
-    res.json({ message: `Schema baru (confidence_level) diatur ke: ${useNewSchema}` });
+    res.json({ message: `New schema (confidence_level) set to: ${useNewSchema}` });
 });
 
 app.post('/admin/outage', (req, res) => {
     isOutage = !isOutage;
     res.locals.log.warn({ outage: isOutage }, 'outage toggled');
-    res.json({ message: `Status outage PVMBG saat ini: ${isOutage}` });
+    res.json({ message: `Current PVMBG outage status: ${isOutage}` });
 });
 
-const server = app.listen(PORT, () => logger.info({ port: PORT }, 'Mock PVMBG berjalan'));
+const server = app.listen(PORT, () => logger.info({ port: PORT }, 'Mock PVMBG started'));
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
-        logger.info({ signal }, 'mock-pvmbg berhenti');
+        logger.info({ signal }, 'mock-pvmbg shutting down');
         server.close(() => process.exit(0));
         setTimeout(() => process.exit(1), 8000).unref();
     });
