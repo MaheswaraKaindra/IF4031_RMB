@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { authenticateClient, findClient, type Client } from '../clients.js';
 import { config } from '../config.js';
 import { getLog } from '../middleware/correlationId.js';
+import { recordFailure } from '../middleware/failureThrottle.js';
 import { consumeRefreshToken, issueRefreshToken } from '../refreshStore.js';
 import { signAccessToken } from '../tokens.js';
 
@@ -34,14 +35,15 @@ async function issueTokens(res: Response, client: Client, family?: string): Prom
 tokenRouter.post('/token', async (req, res) => {
     const { client_id, client_secret } = req.body ?? {};
     if (!isNonEmptyString(client_id) || !isNonEmptyString(client_secret)) {
-        oauthError(res, 400, 'invalid_request', 'client_id dan client_secret wajib diisi');
+        oauthError(res, 400, 'invalid_request', 'client_id and client_secret are required');
         return;
     }
 
     const client = authenticateClient(client_id, client_secret);
     if (client === undefined) {
+        recordFailure(req.ip);
         getLog(res).warn({ client_id }, 'client authentication failed');
-        oauthError(res, 401, 'invalid_client', 'client_id atau client_secret salah');
+        oauthError(res, 401, 'invalid_client', 'client_id or client_secret is invalid');
         return;
     }
 
@@ -51,22 +53,23 @@ tokenRouter.post('/token', async (req, res) => {
 tokenRouter.post('/refresh', async (req, res) => {
     const { refresh_token } = req.body ?? {};
     if (!isNonEmptyString(refresh_token)) {
-        oauthError(res, 400, 'invalid_request', 'refresh_token wajib diisi');
+        oauthError(res, 400, 'invalid_request', 'refresh_token is required');
         return;
     }
 
     const result = consumeRefreshToken(refresh_token);
     if (!result.ok) {
+        recordFailure(req.ip);
         const log = getLog(res);
         if (result.reason === 'reused') log.warn({ client_id: result.clientId }, 'refresh token reuse detected, family revoked');
         else log.info({ reason: result.reason, client_id: result.clientId }, 'refresh rejected');
-        oauthError(res, 401, 'invalid_grant', 'refresh_token tidak valid, kedaluwarsa, atau sudah dipakai');
+        oauthError(res, 401, 'invalid_grant', 'refresh_token is invalid, expired, or already used');
         return;
     }
 
     const client = findClient(result.clientId);
     if (client === undefined) {
-        oauthError(res, 401, 'invalid_grant', 'client tidak lagi terdaftar');
+        oauthError(res, 401, 'invalid_grant', 'client is no longer registered');
         return;
     }
 

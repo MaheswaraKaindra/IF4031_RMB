@@ -18,6 +18,7 @@ services:
       BMKG_PORT: ${BMKG_PORT:-8081}
       X_BMKG_KEY_SHA256: ${X_BMKG_KEY_SHA256:?jalankan scripts/gen-secrets.sh}
       BMKG_EVENT_INTERVAL_MS: ${BMKG_EVENT_INTERVAL_MS:-10000}
+      BMKG_WARNING_DELAY_MS: ${BMKG_WARNING_DELAY_MS:-0}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "${BMKG_PORT:-8081}:${BMKG_PORT:-8081}"
@@ -130,6 +131,8 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-bnpb-client-api}
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-60}
       REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-3600}
+      AUTH_MAX_FAILED_ATTEMPTS: ${AUTH_MAX_FAILED_ATTEMPTS:-10}
+      AUTH_FAILURE_WINDOW_SECONDS: ${AUTH_FAILURE_WINDOW_SECONDS:-60}
       AUTH_CLIENT_MEDIA_SECRET_SHA256: ${AUTH_CLIENT_MEDIA_SECRET_SHA256:?jalankan scripts/gen-secrets.sh}
       AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256: ${AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256:?jalankan scripts/gen-secrets.sh}
       AUTH_CLIENT_BNPB_OPS_SECRET_SHA256: ${AUTH_CLIENT_BNPB_OPS_SECRET_SHA256:?jalankan scripts/gen-secrets.sh}
@@ -163,6 +166,19 @@ services:
     command: ["node", "dist/dashboard.js"]
     environment: *consumer-env
     networks: [broker]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *consumer-healthcheck
+
+  # Third consumer for the P5 demo, not started by default: docker compose --profile demo up -d consumer-portal
+  consumer-portal:
+    <<: *node-service
+    build: ./consumers
+    command: ["node", "dist/portal.js"]
+    environment: *consumer-env
+    networks: [broker]
+    profiles: [demo]
     depends_on:
       rabbitmq:
         condition: service_healthy

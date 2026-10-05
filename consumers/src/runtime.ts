@@ -28,6 +28,9 @@ export function runConsumer({ service, queue, handle }: ConsumerOptions): void {
     let connection: amqp.ChannelModel | undefined;
     let shuttingDown = false;
 
+    const seenKeys = new Set<string>();
+    const MAX_SEEN = 10_000;
+
     async function connect(): Promise<void> {
         try {
             const conn = await amqp.connect(RABBITMQ_URL);
@@ -36,26 +39,60 @@ export function runConsumer({ service, queue, handle }: ConsumerOptions): void {
             await channel.assertExchange(EXCHANGE, 'fanout', { durable: true });
             const q = await channel.assertQueue(queue, { durable: true });
             await channel.bindQueue(q.queue, EXCHANGE, '');
+            await channel.prefetch(10);
 
-            conn.on('error', (error) => logger.warn({ error: errorMessage(error) }, 'koneksi RabbitMQ error'));
+            conn.on('error', (error) => logger.warn({ error: errorMessage(error) }, 'RabbitMQ connection error'));
             conn.on('close', () => {
                 connection = undefined;
                 if (shuttingDown) return;
-                logger.warn({ retry_in_ms: RECONNECT_DELAY_MS }, 'koneksi RabbitMQ terputus');
+                logger.warn({ retry_in_ms: RECONNECT_DELAY_MS }, 'RabbitMQ connection lost');
                 setTimeout(connect, RECONNECT_DELAY_MS);
             });
             connection = conn;
 
-            logger.info({ queue: q.queue }, 'Menunggu event');
+            logger.info({ queue: q.queue }, 'Waiting for events');
 
             await channel.consume(q.queue, (msg) => {
                 if (msg === null) return;
+
                 const log = logger.child({ correlation_id: msg.properties.correlationId });
-                handle(JSON.parse(msg.content.toString()), log);
+
+                let event: any;
+                try {
+                    event = JSON.parse(msg.content.toString());
+                } catch (err) {
+                    log.error({ error: errorMessage(err) }, 'Invalid message (not JSON), rejecting without requeue');
+                    channel.nack(msg, false, false);
+                    return;
+                }
+
+                const hazardId: string | undefined = event?.hazard_id;
+                if (hazardId) {
+                    const key = `${hazardId}:${event?.severity}`;
+                    if (seenKeys.has(key)) {
+                        log.debug({ hazard_id: hazardId, severity: event?.severity }, 'Duplicate message, skipping');
+                        channel.ack(msg);
+                        return;
+                    }
+                    seenKeys.add(key);
+                    if (seenKeys.size > MAX_SEEN) {
+                        const oldest = seenKeys.values().next().value;
+                        if (oldest !== undefined) seenKeys.delete(oldest);
+                    }
+                }
+
+                try {
+                    handle(event, log);
+                } catch (err) {
+                    log.error({ hazard_id: hazardId, error: errorMessage(err) }, 'Handler error, rejecting without requeue');
+                    channel.nack(msg, false, false);
+                    return;
+                }
+
                 channel.ack(msg);
             });
         } catch (error) {
-            logger.error({ error: errorMessage(error), retry_in_ms: RECONNECT_DELAY_MS }, 'Gagal terhubung ke RabbitMQ');
+            logger.error({ error: errorMessage(error), retry_in_ms: RECONNECT_DELAY_MS }, 'Failed to connect to RabbitMQ');
             setTimeout(connect, RECONNECT_DELAY_MS);
         }
     }
@@ -73,7 +110,7 @@ export function runConsumer({ service, queue, handle }: ConsumerOptions): void {
 
     for (const signal of ['SIGTERM', 'SIGINT'] as const) {
         process.on(signal, async () => {
-            logger.info({ signal }, `${service} berhenti`);
+            logger.info({ signal }, `${service} shutting down`);
             shuttingDown = true;
             health.close();
             await connection?.close().catch(() => undefined);

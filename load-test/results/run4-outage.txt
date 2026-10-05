@@ -1,0 +1,41 @@
+
+
+  █ THRESHOLDS 
+
+    http_req_duration{scenario:bmkg_only,endpoint:events}
+    ✓ 'p(95)<300' p(95)=59.54ms
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 68558   1142.077694/s
+    checks_succeeded...: 100.00% 68558 out of 68558
+    checks_failed......: 0.00%   0 out of 68558
+
+    ✓ status 200 or 429
+
+    CUSTOM
+    stale_volcanic.............................: 100.00% 34255 out of 34255
+
+    HTTP
+    http_req_duration..........................: avg=43.55ms min=1.96ms  med=41.74ms p(90)=53.81ms p(95)=59.7ms  p(99)=76.07ms max=420.69ms
+      { expected_response:true }...............: avg=43.55ms min=1.96ms  med=41.74ms p(90)=53.81ms p(95)=59.7ms  p(99)=76.07ms max=420.69ms
+      { scenario:bmkg_only,endpoint:events }...: avg=43.58ms min=18.39ms med=41.77ms p(90)=53.78ms p(95)=59.54ms p(99)=76.01ms max=420.69ms
+    http_req_failed............................: 0.00%   0 out of 68658
+    http_reqs..................................: 68658   1143.74355/s
+
+    EXECUTION
+    iteration_duration.........................: avg=43.75ms min=20.11ms med=41.88ms p(90)=54ms    p(95)=59.91ms p(99)=76.43ms max=478.3ms 
+    iterations.................................: 68558   1142.077694/s
+    vus........................................: 50      min=50             max=50
+    vus_max....................................: 50      min=50             max=50
+
+    NETWORK
+    data_received..............................: 600 MB  10 MB/s
+    data_sent..................................: 50 MB   834 kB/s
+
+
+

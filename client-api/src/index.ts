@@ -21,22 +21,22 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/events', auth, eventsRouter);
 
 app.use((_req: Request, res: Response) => {
-    res.status(404).json({ error: 'Tidak ditemukan' });
+    res.status(404).json({ error: 'Not found' });
 });
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     getLog(res).error({ error: err instanceof Error ? err.message : String(err) }, 'unhandled error');
-    res.status(500).json({ error: 'Terjadi kesalahan pada server' });
+    res.status(500).json({ error: 'Internal server error' });
 });
 
 const server = app.listen(config.port, () => {
-    logger.info({ port: config.port, aggregator_url: config.aggregatorUrl }, 'client-api berjalan');
+    logger.info({ port: config.port, aggregator_url: config.aggregatorUrl }, 'client-api started');
 });
 
-// Graceful shutdown: docker stop mengirim SIGTERM dan request yang berjalan dibiarkan selesai
+// Graceful shutdown: docker stop sends SIGTERM, in-flight requests are allowed to finish
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
-        logger.info({ signal }, 'client-api berhenti');
+        logger.info({ signal }, 'client-api stopped');
         server.close(() => process.exit(0));
         setTimeout(() => process.exit(1), 8000).unref();
     });

@@ -4,7 +4,9 @@ import { logger } from '../logger.js';
 
 export interface SourceStatusDoc {
     _id: 'BMKG' | 'PVMBG';
-    last_success_at: string;
+    last_success_at?: string;
+    // Present only while the latest poll of this source failed, removed again by the next success
+    last_failure_at?: string;
 }
 
 let client: MongoClient | undefined;
@@ -12,7 +14,7 @@ let db: Db | undefined;
 
 export async function connectMongo(): Promise<void> {
     const uri = process.env.MONGO_URI;
-    if (!uri) throw new Error('MONGO_URI belum diatur');
+    if (!uri) throw new Error('MONGO_URI is not set');
 
     client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
     await client.connect();
@@ -20,7 +22,8 @@ export async function connectMongo(): Promise<void> {
 
     await getHazards().createIndex({ source: 1, source_ref_id: 1 }, { unique: true });
     await getHazards().createIndex({ occurred_at: -1 });
-    logger.info('Berhasil terhubung ke MongoDB');
+    await getHazards().createIndex({ hazard_id: 1 }, { unique: true });
+    logger.info('Connected to MongoDB');
 }
 
 export async function pingMongo(timeoutMs: number): Promise<boolean> {
@@ -35,11 +38,11 @@ export async function closeMongo(): Promise<void> {
 }
 
 export function getHazards(): Collection<HazardEvent> {
-    if (!db) throw new Error('MongoDB belum terhubung');
+    if (!db) throw new Error('MongoDB not connected');
     return db.collection<HazardEvent>('hazards');
 }
 
 export function getSourceStatus(): Collection<SourceStatusDoc> {
-    if (!db) throw new Error('MongoDB belum terhubung');
+    if (!db) throw new Error('MongoDB not connected');
     return db.collection<SourceStatusDoc>('source_status');
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Generate seluruh kredensial dan key untuk .env.
+# Generate all credentials and keys for .env.
 # Usage: ./scripts/gen-secrets.sh >> .env
 set -euo pipefail
 
-command -v openssl >/dev/null || { echo "openssl wajib terpasang" >&2; exit 1; }
+command -v openssl >/dev/null || { echo "openssl is required" >&2; exit 1; }
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

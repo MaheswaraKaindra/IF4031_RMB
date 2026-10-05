@@ -1,4 +1,4 @@
-// Load test: 50 koneksi paralel (25 BMKG-only + 25 vulkanik) selama 60 detik.
+// Load test: 50 parallel connections (25 BMKG-only + 25 volcanic) for 60 seconds.
 // Script: k6 run -e CLIENT_SECRET=<AUTH_CLIENT_BNPB_OPS_SECRET> load-test/events.js
 // env (optional): BASE_URL, AUTH_URL, CLIENT_ID, DURATION, VUS_EACH
 import http from 'k6/http';
@@ -12,9 +12,9 @@ const CLIENT_SECRET = __ENV.CLIENT_SECRET;
 const DURATION = __ENV.DURATION || '60s';
 const VUS_EACH = Number(__ENV.VUS_EACH || 25);
 
-if (!CLIENT_SECRET) throw new Error('CLIENT_SECRET wajib diisi (-e CLIENT_SECRET=...)');
+if (!CLIENT_SECRET) throw new Error('CLIENT_SECRET is required (-e CLIENT_SECRET=...)');
 
-// Token per VU, di-refresh sebelum kedaluwarsa karena TTL default (60 detik) lebih pendek dari durasi test
+// Token per VU, refreshed before expiry because default TTL (60s) is shorter than test duration
 let session = null;
 
 function authenticate() {
@@ -26,7 +26,7 @@ function authenticate() {
     if (!res || res.status !== 200) {
         res = http.post(`${AUTH_URL}/token`, JSON.stringify({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET }), params);
     }
-    if (res.status !== 200) throw new Error(`Gagal mendapatkan token: ${res.status}`);
+    if (res.status !== 200) throw new Error(`Failed to acquire token: ${res.status}`);
 
     const body = res.json();
     session = {
@@ -44,7 +44,7 @@ function authHeaders() {
 const rejected429 = new Counter('rejected_429');
 const staleVolcanic = new Rate('stale_volcanic');
 
-// 429 tidak dihitung sebagai request gagal
+// 429 is not counted as a failed request
 http.setResponseCallback(http.expectedStatuses(200, 429));
 
 export const options = {
@@ -61,7 +61,7 @@ export const options = {
 
 function record(res) {
     if (res.status === 429) rejected429.add(1);
-    check(res, { 'status 200 atau 429': (r) => r.status === 200 || r.status === 429 });
+    check(res, { 'status 200 or 429': (r) => r.status === 200 || r.status === 429 });
 }
 
 export function bmkgOnly() {

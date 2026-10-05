@@ -16,7 +16,12 @@ export type SourceName = 'BMKG' | 'PVMBG';
 
 export type Scope = 'events:read:summary' | 'events:read:raw';
 
-export type SourceStatuses = Record<SourceName, string | null>;
+export interface SourceStatus {
+    last_success_at: string | null;
+    last_failure_at: string | null;
+}
+
+export type SourceStatuses = Record<SourceName, SourceStatus>;
 
 export interface SourceFreshness {
     last_success_at: string | null;

@@ -22,7 +22,7 @@ const SCOPES: Record<keyof typeof config.clientSecretHashes, Scope> = {
 
 const hashes = Object.values(config.clientSecretHashes);
 if (new Set(hashes).size !== hashes.length) {
-    throw new Error('Setiap client wajib memiliki secret yang berbeda');
+    throw new Error('Each client must have a unique secret');
 }
 
 const registry = new Map<string, RegisteredClient>(
@@ -32,7 +32,7 @@ const registry = new Map<string, RegisteredClient>(
     ])
 );
 
-// Dibandingkan terhadap digest dummy agar client_id tak dikenal tidak bisa dibedakan lewat waktu respons
+// Compared against dummy digest so unknown client_ids cannot be distinguished via response timing
 const DUMMY_DIGEST = sha256('dummy');
 
 export function authenticateClient(clientId: string, secret: string): Client | undefined {
