@@ -5,8 +5,10 @@
     "build": "tsc",
     "start:notifier": "node dist/notifier.js",
     "start:dashboard": "node dist/dashboard.js",
-    "dev:notifier": "ts-node-dev --respawn src/notifier.ts",
-    "dev:dashboard": "ts-node-dev --respawn src/dashboard.ts"
+    "dev:notifier": "tsx watch src/notifier.ts",
+    "dev:dashboard": "tsx watch src/dashboard.ts",
+    "dev:portal": "tsx watch src/portal.ts",
+    "start:portal": "node dist/portal.js"
   },
   "keywords": [],
   "author": "",
@@ -20,7 +22,7 @@
   "devDependencies": {
     "@types/amqplib": "^0.10.8",
     "@types/node": "^26.6.2",
-    "ts-node-dev": "^2.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }
