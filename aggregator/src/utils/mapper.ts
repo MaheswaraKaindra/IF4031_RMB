@@ -70,12 +70,11 @@ export function mapSeismicToHazard(raw: any, tsunamiWarning?: any): HazardEvent 
         occurred_at,
         ingested_at: new Date().toISOString(),
         attributes: {
+            ...unknownFields,
             magnitude,
             depth_km,
             potential_tsunami,
             ...(tsunamiWarning ? { tsunami_warning: tsunamiWarning } : {}),
-            // Spec: every field without a canonical equivalent goes to attributes
-            ...unknownFields,
         },
     };
 }
@@ -96,10 +95,10 @@ export function mapVolcanicToHazard(raw: any): HazardEvent {
     // BNPB's static reference table for volcano names and coordinates
     const volcanoDict: Record<string, { name: string; lat: number; lon: number }> = {
         'VOLC-01': { name: 'Mount Prikitiw', lat: -7.542, lon: 110.446 },
-        'VOLC-02': { name: 'Mount Skypiea',  lat: -8.108, lon: 112.308 },
-        'VOLC-03': { name: 'Mount Merapi',   lat: -7.541, lon: 110.446 },
-        'VOLC-04': { name: 'Mount Semeru',   lat: -8.108, lon: 112.922 },
-        'VOLC-05': { name: 'Mount Kelud',    lat: -7.930, lon: 112.308 },
+        'VOLC-02': { name: 'Mount Skypiea', lat: -8.108, lon: 112.308 },
+        'VOLC-03': { name: 'Mount Merapi', lat: -7.541, lon: 110.446 },
+        'VOLC-04': { name: 'Mount Semeru', lat: -8.108, lon: 112.922 },
+        'VOLC-05': { name: 'Mount Kelud', lat: -7.930, lon: 112.308 },
     };
 
     const volcanoInfo = volcanoDict[raw.volcano_id] ?? { name: raw.volcano_id, lat: 0, lon: 0 };
