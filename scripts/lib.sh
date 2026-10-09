@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for scripts/p2 and scripts/p4. Source it, do not run it.
+# Shared helpers for scripts/p2, scripts/p3 and scripts/p4. Source it, do not run it.
 # Needs: a running stack (docker compose up -d --build --wait), a filled .env, docker, curl, jq.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,6 +15,7 @@ done
 CLIENT_API="http://localhost:${CLIENT_API_PORT:-8080}"
 AUTH_API="http://localhost:${AUTH_PORT:-8090}"
 PVMBG_API="http://localhost:${PVMBG_PORT:-8082}"
+BMKG_API="http://localhost:${BMKG_PORT:-8081}"
 
 # Load test results are written to load-test/results/<RESULT_PREFIX>-<name>.{txt,json}.
 # The default never overwrites the committed final-* results.
@@ -28,6 +29,17 @@ mint() {
     curl -s -X POST "$AUTH_API/token" -H 'Content-Type: application/json' \
         -d "$(jq -n --arg s "$AUTH_CLIENT_BNPB_OPS_SECRET" '{client_id:"bnpb-ops",client_secret:$s}')" \
         | jq -r '.access_token // empty'
+}
+
+# login <client_id> <client_secret>: prints the full /token response.
+login() {
+    curl -s -X POST "$AUTH_API/token" -H 'Content-Type: application/json' \
+        -d "$(jq -n --arg id "$1" --arg s "$2" '{client_id:$id,client_secret:$s}')"
+}
+
+# code <curl args...>: prints only the HTTP status code.
+code() {
+    curl -s -m 5 -o /dev/null -w '%{http_code}' "$@"
 }
 
 # timed_events <query string> [jq filter]: GET /events with a fresh token, prints status code, time and body.
