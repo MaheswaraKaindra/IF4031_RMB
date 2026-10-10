@@ -1,0 +1,302 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: load-test/events.js
+        output: -
+
+     scenarios: (100.00%) 2 scenarios, 200 max VUs, 1m30s max duration (incl. graceful stop):
+              * bmkg_only: 100 looping VUs for 1m0s (exec: bmkgOnly, gracefulStop: 30s)
+              * volcanic: 100 looping VUs for 1m0s (exec: volcanic, gracefulStop: 30s)
+
+
+running (0m01.0s), 200/200 VUs, 1497 complete and 0 interrupted iterations
+bmkg_only   [   2% ] 100 VUs  0m01.0s/1m0s
+volcanic    [   2% ] 100 VUs  0m01.0s/1m0s
+
+running (0m02.0s), 200/200 VUs, 4506 complete and 0 interrupted iterations
+bmkg_only   [   3% ] 100 VUs  0m02.0s/1m0s
+volcanic    [   3% ] 100 VUs  0m02.0s/1m0s
+
+running (0m03.0s), 200/200 VUs, 9187 complete and 0 interrupted iterations
+bmkg_only   [   5% ] 100 VUs  0m03.0s/1m0s
+volcanic    [   5% ] 100 VUs  0m03.0s/1m0s
+
+running (0m04.0s), 200/200 VUs, 14600 complete and 0 interrupted iterations
+bmkg_only   [   7% ] 100 VUs  0m04.0s/1m0s
+volcanic    [   7% ] 100 VUs  0m04.0s/1m0s
+
+running (0m05.0s), 200/200 VUs, 20910 complete and 0 interrupted iterations
+bmkg_only   [   8% ] 100 VUs  0m05.0s/1m0s
+volcanic    [   8% ] 100 VUs  0m05.0s/1m0s
+
+running (0m06.0s), 200/200 VUs, 26359 complete and 0 interrupted iterations
+bmkg_only   [  10% ] 100 VUs  0m06.0s/1m0s
+volcanic    [  10% ] 100 VUs  0m06.0s/1m0s
+
+running (0m07.0s), 200/200 VUs, 31658 complete and 0 interrupted iterations
+bmkg_only   [  12% ] 100 VUs  0m07.0s/1m0s
+volcanic    [  12% ] 100 VUs  0m07.0s/1m0s
+
+running (0m08.0s), 200/200 VUs, 37312 complete and 0 interrupted iterations
+bmkg_only   [  13% ] 100 VUs  0m08.0s/1m0s
+volcanic    [  13% ] 100 VUs  0m08.0s/1m0s
+
+running (0m09.0s), 200/200 VUs, 42756 complete and 0 interrupted iterations
+bmkg_only   [  15% ] 100 VUs  0m09.0s/1m0s
+volcanic    [  15% ] 100 VUs  0m09.0s/1m0s
+
+running (0m10.0s), 200/200 VUs, 48438 complete and 0 interrupted iterations
+bmkg_only   [  17% ] 100 VUs  0m10.0s/1m0s
+volcanic    [  17% ] 100 VUs  0m10.0s/1m0s
+
+running (0m11.0s), 200/200 VUs, 53933 complete and 0 interrupted iterations
+bmkg_only   [  18% ] 100 VUs  0m11.0s/1m0s
+volcanic    [  18% ] 100 VUs  0m11.0s/1m0s
+
+running (0m12.0s), 200/200 VUs, 58379 complete and 0 interrupted iterations
+bmkg_only   [  20% ] 100 VUs  0m12.0s/1m0s
+volcanic    [  20% ] 100 VUs  0m12.0s/1m0s
+
+running (0m13.0s), 200/200 VUs, 64385 complete and 0 interrupted iterations
+bmkg_only   [  22% ] 100 VUs  0m13.0s/1m0s
+volcanic    [  22% ] 100 VUs  0m13.0s/1m0s
+
+running (0m14.0s), 200/200 VUs, 67832 complete and 0 interrupted iterations
+bmkg_only   [  23% ] 100 VUs  0m14.0s/1m0s
+volcanic    [  23% ] 100 VUs  0m14.0s/1m0s
+
+running (0m15.0s), 200/200 VUs, 72734 complete and 0 interrupted iterations
+bmkg_only   [  25% ] 100 VUs  0m15.0s/1m0s
+volcanic    [  25% ] 100 VUs  0m15.0s/1m0s
+
+running (0m16.0s), 200/200 VUs, 77384 complete and 0 interrupted iterations
+bmkg_only   [  27% ] 100 VUs  0m16.0s/1m0s
+volcanic    [  27% ] 100 VUs  0m16.0s/1m0s
+
+running (0m17.0s), 200/200 VUs, 80876 complete and 0 interrupted iterations
+bmkg_only   [  28% ] 100 VUs  0m17.0s/1m0s
+volcanic    [  28% ] 100 VUs  0m17.0s/1m0s
+
+running (0m18.0s), 200/200 VUs, 85832 complete and 0 interrupted iterations
+bmkg_only   [  30% ] 100 VUs  0m18.0s/1m0s
+volcanic    [  30% ] 100 VUs  0m18.0s/1m0s
+
+running (0m19.0s), 200/200 VUs, 90163 complete and 0 interrupted iterations
+bmkg_only   [  32% ] 100 VUs  0m19.0s/1m0s
+volcanic    [  32% ] 100 VUs  0m19.0s/1m0s
+
+running (0m20.0s), 200/200 VUs, 96753 complete and 0 interrupted iterations
+bmkg_only   [  33% ] 100 VUs  0m20.0s/1m0s
+volcanic    [  33% ] 100 VUs  0m20.0s/1m0s
+
+running (0m21.0s), 200/200 VUs, 101806 complete and 0 interrupted iterations
+bmkg_only   [  35% ] 100 VUs  0m21.0s/1m0s
+volcanic    [  35% ] 100 VUs  0m21.0s/1m0s
+
+running (0m22.0s), 200/200 VUs, 107202 complete and 0 interrupted iterations
+bmkg_only   [  37% ] 100 VUs  0m22.0s/1m0s
+volcanic    [  37% ] 100 VUs  0m22.0s/1m0s
+
+running (0m23.0s), 200/200 VUs, 112941 complete and 0 interrupted iterations
+bmkg_only   [  38% ] 100 VUs  0m23.0s/1m0s
+volcanic    [  38% ] 100 VUs  0m23.0s/1m0s
+
+running (0m24.0s), 200/200 VUs, 119296 complete and 0 interrupted iterations
+bmkg_only   [  40% ] 100 VUs  0m24.0s/1m0s
+volcanic    [  40% ] 100 VUs  0m24.0s/1m0s
+
+running (0m25.0s), 200/200 VUs, 123541 complete and 0 interrupted iterations
+bmkg_only   [  42% ] 100 VUs  0m25.0s/1m0s
+volcanic    [  42% ] 100 VUs  0m25.0s/1m0s
+
+running (0m26.0s), 200/200 VUs, 130017 complete and 0 interrupted iterations
+bmkg_only   [  43% ] 100 VUs  0m26.0s/1m0s
+volcanic    [  43% ] 100 VUs  0m26.0s/1m0s
+
+running (0m27.0s), 200/200 VUs, 137317 complete and 0 interrupted iterations
+bmkg_only   [  45% ] 100 VUs  0m27.0s/1m0s
+volcanic    [  45% ] 100 VUs  0m27.0s/1m0s
+
+running (0m28.0s), 200/200 VUs, 143487 complete and 0 interrupted iterations
+bmkg_only   [  47% ] 100 VUs  0m28.0s/1m0s
+volcanic    [  47% ] 100 VUs  0m28.0s/1m0s
+
+running (0m29.0s), 200/200 VUs, 148096 complete and 0 interrupted iterations
+bmkg_only   [  48% ] 100 VUs  0m29.0s/1m0s
+volcanic    [  48% ] 100 VUs  0m29.0s/1m0s
+
+running (0m30.0s), 200/200 VUs, 152607 complete and 0 interrupted iterations
+bmkg_only   [  50% ] 100 VUs  0m30.0s/1m0s
+volcanic    [  50% ] 100 VUs  0m30.0s/1m0s
+
+running (0m31.0s), 200/200 VUs, 155806 complete and 0 interrupted iterations
+bmkg_only   [  52% ] 100 VUs  0m31.0s/1m0s
+volcanic    [  52% ] 100 VUs  0m31.0s/1m0s
+
+running (0m32.0s), 200/200 VUs, 159198 complete and 0 interrupted iterations
+bmkg_only   [  53% ] 100 VUs  0m32.0s/1m0s
+volcanic    [  53% ] 100 VUs  0m32.0s/1m0s
+
+running (0m33.0s), 200/200 VUs, 163366 complete and 0 interrupted iterations
+bmkg_only   [  55% ] 100 VUs  0m33.0s/1m0s
+volcanic    [  55% ] 100 VUs  0m33.0s/1m0s
+
+running (0m34.0s), 200/200 VUs, 167248 complete and 0 interrupted iterations
+bmkg_only   [  57% ] 100 VUs  0m34.0s/1m0s
+volcanic    [  57% ] 100 VUs  0m34.0s/1m0s
+
+running (0m35.0s), 200/200 VUs, 173253 complete and 0 interrupted iterations
+bmkg_only   [  58% ] 100 VUs  0m35.0s/1m0s
+volcanic    [  58% ] 100 VUs  0m35.0s/1m0s
+
+running (0m36.0s), 200/200 VUs, 178165 complete and 0 interrupted iterations
+bmkg_only   [  60% ] 100 VUs  0m36.0s/1m0s
+volcanic    [  60% ] 100 VUs  0m36.0s/1m0s
+
+running (0m37.0s), 200/200 VUs, 183433 complete and 0 interrupted iterations
+bmkg_only   [  62% ] 100 VUs  0m37.0s/1m0s
+volcanic    [  62% ] 100 VUs  0m37.0s/1m0s
+
+running (0m38.0s), 200/200 VUs, 188574 complete and 0 interrupted iterations
+bmkg_only   [  63% ] 100 VUs  0m38.0s/1m0s
+volcanic    [  63% ] 100 VUs  0m38.0s/1m0s
+
+running (0m39.0s), 200/200 VUs, 190580 complete and 0 interrupted iterations
+bmkg_only   [  65% ] 100 VUs  0m39.0s/1m0s
+volcanic    [  65% ] 100 VUs  0m39.0s/1m0s
+
+running (0m40.0s), 200/200 VUs, 194253 complete and 0 interrupted iterations
+bmkg_only   [  67% ] 100 VUs  0m40.0s/1m0s
+volcanic    [  67% ] 100 VUs  0m40.0s/1m0s
+
+running (0m41.0s), 200/200 VUs, 197430 complete and 0 interrupted iterations
+bmkg_only   [  68% ] 100 VUs  0m41.0s/1m0s
+volcanic    [  68% ] 100 VUs  0m41.0s/1m0s
+
+running (0m42.0s), 200/200 VUs, 202406 complete and 0 interrupted iterations
+bmkg_only   [  70% ] 100 VUs  0m42.0s/1m0s
+volcanic    [  70% ] 100 VUs  0m42.0s/1m0s
+
+running (0m43.0s), 200/200 VUs, 208623 complete and 0 interrupted iterations
+bmkg_only   [  72% ] 100 VUs  0m43.0s/1m0s
+volcanic    [  72% ] 100 VUs  0m43.0s/1m0s
+
+running (0m44.0s), 200/200 VUs, 212774 complete and 0 interrupted iterations
+bmkg_only   [  73% ] 100 VUs  0m44.0s/1m0s
+volcanic    [  73% ] 100 VUs  0m44.0s/1m0s
+
+running (0m45.0s), 200/200 VUs, 217998 complete and 0 interrupted iterations
+bmkg_only   [  75% ] 100 VUs  0m45.0s/1m0s
+volcanic    [  75% ] 100 VUs  0m45.0s/1m0s
+
+running (0m46.0s), 200/200 VUs, 223390 complete and 0 interrupted iterations
+bmkg_only   [  77% ] 100 VUs  0m46.0s/1m0s
+volcanic    [  77% ] 100 VUs  0m46.0s/1m0s
+
+running (0m47.0s), 200/200 VUs, 227584 complete and 0 interrupted iterations
+bmkg_only   [  78% ] 100 VUs  0m47.0s/1m0s
+volcanic    [  78% ] 100 VUs  0m47.0s/1m0s
+
+running (0m48.0s), 200/200 VUs, 232780 complete and 0 interrupted iterations
+bmkg_only   [  80% ] 100 VUs  0m48.0s/1m0s
+volcanic    [  80% ] 100 VUs  0m48.0s/1m0s
+
+running (0m49.0s), 200/200 VUs, 237793 complete and 0 interrupted iterations
+bmkg_only   [  82% ] 100 VUs  0m49.0s/1m0s
+volcanic    [  82% ] 100 VUs  0m49.0s/1m0s
+
+running (0m50.0s), 200/200 VUs, 241689 complete and 0 interrupted iterations
+bmkg_only   [  83% ] 100 VUs  0m50.0s/1m0s
+volcanic    [  83% ] 100 VUs  0m50.0s/1m0s
+
+running (0m51.0s), 200/200 VUs, 245022 complete and 0 interrupted iterations
+bmkg_only   [  85% ] 100 VUs  0m51.0s/1m0s
+volcanic    [  85% ] 100 VUs  0m51.0s/1m0s
+
+running (0m52.0s), 200/200 VUs, 251116 complete and 0 interrupted iterations
+bmkg_only   [  87% ] 100 VUs  0m52.0s/1m0s
+volcanic    [  87% ] 100 VUs  0m52.0s/1m0s
+
+running (0m53.0s), 200/200 VUs, 257137 complete and 0 interrupted iterations
+bmkg_only   [  88% ] 100 VUs  0m53.0s/1m0s
+volcanic    [  88% ] 100 VUs  0m53.0s/1m0s
+
+running (0m54.0s), 200/200 VUs, 263118 complete and 0 interrupted iterations
+bmkg_only   [  90% ] 100 VUs  0m54.0s/1m0s
+volcanic    [  90% ] 100 VUs  0m54.0s/1m0s
+
+running (0m55.0s), 200/200 VUs, 269204 complete and 0 interrupted iterations
+bmkg_only   [  92% ] 100 VUs  0m55.0s/1m0s
+volcanic    [  92% ] 100 VUs  0m55.0s/1m0s
+
+running (0m56.0s), 200/200 VUs, 275276 complete and 0 interrupted iterations
+bmkg_only   [  93% ] 100 VUs  0m56.0s/1m0s
+volcanic    [  93% ] 100 VUs  0m56.0s/1m0s
+
+running (0m57.0s), 200/200 VUs, 281557 complete and 0 interrupted iterations
+bmkg_only   [  95% ] 100 VUs  0m57.0s/1m0s
+volcanic    [  95% ] 100 VUs  0m57.0s/1m0s
+
+running (0m58.0s), 200/200 VUs, 286175 complete and 0 interrupted iterations
+bmkg_only   [  97% ] 100 VUs  0m58.0s/1m0s
+volcanic    [  97% ] 100 VUs  0m58.0s/1m0s
+
+running (0m59.0s), 200/200 VUs, 290803 complete and 0 interrupted iterations
+bmkg_only   [  98% ] 100 VUs  0m59.0s/1m0s
+volcanic    [  98% ] 100 VUs  0m59.0s/1m0s
+
+running (1m00.0s), 200/200 VUs, 296798 complete and 0 interrupted iterations
+bmkg_only   [ 100% ] 100 VUs  1m00.0s/1m0s
+volcanic    [ 100% ] 100 VUs  1m00.0s/1m0s
+
+
+  █ THRESHOLDS 
+
+    http_req_duration{scenario:bmkg_only,endpoint:events}
+    ✓ 'p(95)<300' p(95)=65.94ms
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 297127  4948.83361/s
+    checks_succeeded...: 100.00% 297127 out of 297127
+    checks_failed......: 0.00%   0 out of 297127
+
+    ✓ status 200 or 429
+
+    CUSTOM
+    rejected_429...............................: 294300 4901.74818/s
+    stale_volcanic.............................: 0.00%  0 out of 1386
+
+    HTTP
+    http_req_duration..........................: avg=40.27ms min=2.83ms med=33.88ms p(90)=51.89ms p(95)=67.31ms p(99)=143.04ms max=4.44s
+      { expected_response:true }...............: avg=40.27ms min=2.83ms med=33.88ms p(90)=51.89ms p(95)=67.31ms p(99)=143.04ms max=4.44s
+      { scenario:bmkg_only,endpoint:events }...: avg=39.72ms min=3.8ms  med=33.81ms p(90)=51.62ms p(95)=65.94ms p(99)=140.45ms max=4.44s
+    http_req_failed............................: 0.00%  0 out of 297527
+    http_reqs..................................: 297527 4955.495857/s
+
+    EXECUTION
+    iteration_duration.........................: avg=40.38ms min=2.96ms med=33.92ms p(90)=51.84ms p(95)=66.8ms  p(99)=142.49ms max=4.72s
+    iterations.................................: 297127 4948.83361/s
+    vus........................................: 200    min=200         max=200
+    vus_max....................................: 200    min=200         max=200
+
+    NETWORK
+    data_received..............................: 129 MB 2.2 MB/s
+    data_sent..................................: 217 MB 3.6 MB/s
+
+
+
+
+running (1m00.0s), 000/200 VUs, 297127 complete and 0 interrupted iterations
+bmkg_only ✓ [ 100% ] 100 VUs  1m0s
+volcanic  ✓ [ 100% ] 100 VUs  1m0s

@@ -1,0 +1,28 @@
+{
+  "name": "consumers",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsc",
+    "start:notifier": "node dist/notifier.js",
+    "start:dashboard": "node dist/dashboard.js",
+    "dev:notifier": "tsx watch src/notifier.ts",
+    "dev:dashboard": "tsx watch src/dashboard.ts",
+    "dev:portal": "tsx watch src/portal.ts",
+    "start:portal": "node dist/portal.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "amqplib": "^2.0.1",
+    "pino": "^10.3.1"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@types/amqplib": "^0.10.8",
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

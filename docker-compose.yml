@@ -1,0 +1,197 @@
+name: bnpb
+
+x-node-service: &node-service
+  restart: unless-stopped
+  init: true
+
+x-node-healthcheck: &node-healthcheck
+  interval: 10s
+  timeout: 3s
+  retries: 3
+  start_period: 15s
+
+services:
+  mock-bmkg:
+    <<: *node-service
+    build: ./mock-bmkg
+    environment:
+      BMKG_PORT: ${BMKG_PORT:-8081}
+      X_BMKG_KEY_SHA256: ${X_BMKG_KEY_SHA256:?jalankan scripts/gen-secrets.sh}
+      BMKG_EVENT_INTERVAL_MS: ${BMKG_EVENT_INTERVAL_MS:-10000}
+      BMKG_WARNING_DELAY_MS: ${BMKG_WARNING_DELAY_MS:-0}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${BMKG_PORT:-8081}:${BMKG_PORT:-8081}"
+    networks: [sources]
+    healthcheck:
+      <<: *node-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$$BMKG_PORT/health || exit 1"]
+
+  mock-pvmbg:
+    <<: *node-service
+    build: ./mock-pvmbg
+    environment:
+      PVMBG_PORT: ${PVMBG_PORT:-8082}
+      PVMBG_TOKEN_SHA256: ${PVMBG_TOKEN_SHA256:?jalankan scripts/gen-secrets.sh}
+      PVMBG_DELAY_MIN_MS: ${PVMBG_DELAY_MIN_MS:-500}
+      PVMBG_DELAY_MAX_MS: ${PVMBG_DELAY_MAX_MS:-3000}
+      PVMBG_REPORT_INTERVAL_MS: ${PVMBG_REPORT_INTERVAL_MS:-10000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${PVMBG_PORT:-8082}:${PVMBG_PORT:-8082}"
+    networks: [sources]
+    healthcheck:
+      <<: *node-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$$PVMBG_PORT/health || exit 1"]
+
+  mongo:
+    image: docker.io/library/mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-bnpb}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?jalankan scripts/gen-secrets.sh}
+    volumes:
+      - mongo-data:/data/db
+    networks: [store]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  rabbitmq:
+    image: docker.io/library/rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-bnpb}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?jalankan scripts/gen-secrets.sh}
+    ports:
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks: [broker]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  aggregator:
+    <<: *node-service
+    build: ./aggregator
+    environment:
+      AGGREGATOR_PORT: ${AGGREGATOR_PORT:-3000}
+      BMKG_URL: http://mock-bmkg:${BMKG_PORT:-8081}
+      PVMBG_URL: http://mock-pvmbg:${PVMBG_PORT:-8082}
+      X_BMKG_KEY: ${X_BMKG_KEY:?jalankan scripts/gen-secrets.sh}
+      PVMBG_TOKEN: ${PVMBG_TOKEN:?jalankan scripts/gen-secrets.sh}
+      POLLING_INTERVAL_MS: ${POLLING_INTERVAL_MS:-3000}
+      MONGO_URI: mongodb://${MONGO_USERNAME:-bnpb}:${MONGO_PASSWORD}@mongo:27017/bnpb_canonical_store?authSource=admin
+      RABBITMQ_URL: amqp://${RABBITMQ_USERNAME:-bnpb}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks: [api, sources, store, broker]
+    depends_on:
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$$AGGREGATOR_PORT/health || exit 1"]
+
+  client-api:
+    <<: *node-service
+    build: ./client-api
+    environment:
+      CLIENT_API_PORT: ${CLIENT_API_PORT:-8080}
+      AGGREGATOR_URL: http://aggregator:${AGGREGATOR_PORT:-3000}
+      AGGREGATOR_TIMEOUT_MS: ${AGGREGATOR_TIMEOUT_MS:-2000}
+      STALE_AFTER_MS: ${STALE_AFTER_MS:-10000}
+      MAX_IN_FLIGHT: ${MAX_IN_FLIGHT:-100}
+      JWT_PUBLIC_KEY_B64: ${JWT_PUBLIC_KEY_B64:?jalankan scripts/gen-secrets.sh}
+      JWT_ISSUER: ${JWT_ISSUER:-bnpb-auth}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-bnpb-client-api}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${CLIENT_API_PORT:-8080}:${CLIENT_API_PORT:-8080}"
+    networks: [api]
+    healthcheck:
+      <<: *node-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$$CLIENT_API_PORT/health || exit 1"]
+
+  auth-service:
+    <<: *node-service
+    build: ./auth-service
+    environment:
+      AUTH_PORT: ${AUTH_PORT:-8090}
+      JWT_PRIVATE_KEY_B64: ${JWT_PRIVATE_KEY_B64:?jalankan scripts/gen-secrets.sh}
+      JWT_ISSUER: ${JWT_ISSUER:-bnpb-auth}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-bnpb-client-api}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-60}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-3600}
+      AUTH_MAX_FAILED_ATTEMPTS: ${AUTH_MAX_FAILED_ATTEMPTS:-10}
+      AUTH_FAILURE_WINDOW_SECONDS: ${AUTH_FAILURE_WINDOW_SECONDS:-60}
+      AUTH_CLIENT_MEDIA_SECRET_SHA256: ${AUTH_CLIENT_MEDIA_SECRET_SHA256:?jalankan scripts/gen-secrets.sh}
+      AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256: ${AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256:?jalankan scripts/gen-secrets.sh}
+      AUTH_CLIENT_BNPB_OPS_SECRET_SHA256: ${AUTH_CLIENT_BNPB_OPS_SECRET_SHA256:?jalankan scripts/gen-secrets.sh}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${AUTH_PORT:-8090}:${AUTH_PORT:-8090}"
+    networks: [auth]
+    healthcheck:
+      <<: *node-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$$AUTH_PORT/health || exit 1"]
+
+  consumer-notifier:
+    <<: *node-service
+    build: ./consumers
+    command: ["node", "dist/notifier.js"]
+    environment: &consumer-env
+      RABBITMQ_URL: amqp://${RABBITMQ_USERNAME:-bnpb}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      HEALTH_PORT: ${HEALTH_PORT:-8095}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks: [broker]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: &consumer-healthcheck
+      <<: *node-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$$HEALTH_PORT/health || exit 1"]
+
+  consumer-dashboard:
+    <<: *node-service
+    build: ./consumers
+    command: ["node", "dist/dashboard.js"]
+    environment: *consumer-env
+    networks: [broker]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *consumer-healthcheck
+
+  # Third consumer for the P5 demo, not started by default: docker compose --profile demo up -d consumer-portal
+  consumer-portal:
+    <<: *node-service
+    build: ./consumers
+    command: ["node", "dist/portal.js"]
+    environment: *consumer-env
+    networks: [broker]
+    profiles: [demo]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *consumer-healthcheck
+
+networks:
+  sources:
+  api:
+  auth:
+  broker:
+  store:
+    internal: true
+
+volumes:
+  mongo-data:
+  rabbitmq-data:
