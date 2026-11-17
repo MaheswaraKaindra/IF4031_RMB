@@ -174,16 +174,27 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         const known = await probe;
         const maxTimeMS = known.some((u) => !u.available) ? Math.min(this.deadlineMs, 600) : this.deadlineMs;
         try {
-            const docs = await this.hazards()
-                .find(filter, { allowPartialResults: true, maxTimeMS, readPreference: 'primaryPreferred' })
-                .sort(sort as never).limit(q.limit + 1).toArray();
+            // Raw `find` instead of a driver cursor: only the server reply says whether mongos dropped a shard's rows
+            // (`partialResultsReturned`), e.g. when maxTimeMS expires on a busy shard. The driver hides that flag, and a silently
+            // short page with no next_cursor would look like the END of the data (observed: 2324 of 40264 records "complete").
+            const reply = await this.client.db(this.dbName).command({
+                find: HAZARDS, filter, sort, limit: q.limit + 1, batchSize: q.limit + 1, singleBatch: true,
+                allowPartialResults: true, maxTimeMS,
+            }, { readPreference: 'primaryPreferred' });
+            const docs = (reply['cursor']?.['firstBatch'] ?? []) as Document[];
+            const truncated = reply['cursor']?.['partialResultsReturned'] === true;
             const un = (await probe).filter((u) => !u.available).map((u) => u.unit);
+            if (truncated && un.length === 0) {
+                // Rows are missing but no unit is known down (slow shard, election): never present this page as complete, and
+                // keep the caller at the same position so a retry continues exactly here.
+                return { items: [], next_cursor: q.cursor ?? null, partial: true, unavailable_units: ['query-timeout'] };
+            }
             const items = docs.slice(0, q.limit).map(toRecord);
             const last = items[items.length - 1];
             return {
                 items,
                 next_cursor: docs.length > q.limit && last ? encodeCursor({ s: q.sort, k: sortKey(last, q.sort), h: last.hazard_id }) : null,
-                partial: un.length > 0,
+                partial: truncated || un.length > 0,
                 unavailable_units: un,
             };
         } catch (err) {
@@ -223,7 +234,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
             let complete = false;
             try {
                 complete = await bounded(async (live) => {
-                    const cursor = this.hazards().find(filter, { allowPartialResults: true, maxTimeMS: scanMs, readPreference: 'primaryPreferred', projection });
+                    const cursor = this.hazards().find(filter, { allowPartialResults: true, maxTimeMS: scanMs + 2000, readPreference: 'primaryPreferred', projection });
                     try {
                         for await (const d of cursor) { if (!live()) break; onDoc(d); }
                     } finally {
@@ -248,7 +259,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
                 try {
                     const ok = await bounded(async (live) => {
                         const cursor = this.memberClient(m, true).db(this.dbName).collection(HAZARDS)
-                            .find(filter, { maxTimeMS: scanMs, readPreference: 'secondaryPreferred', projection });
+                            .find(filter, { maxTimeMS: scanMs + 2000, readPreference: 'secondaryPreferred', projection });
                         try {
                             for await (const d of cursor) { if (!live()) break; docs.push(d); }
                         } finally {
