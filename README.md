@@ -283,7 +283,7 @@ Pemeriksaan statis tanpa cluster: `./scripts/k8s/verify-resources.sh --manifests
 
 ### Demo multi-node (3 VM k3s)
 
-Topologi final: 3 node dengan kernel terpisah (lihat `docs/topology.md` untuk anggaran RAM dan template deklarasi topologi). Storage P1 = MongoDB sharded
+Topologi final: 3 node dengan kernel terpisah (lihat `docs/topology.md` untuk anggaran RAM dan template deklarasi topologi, `docs/deployment.md` untuk diagram deployment). Storage P1 = MongoDB sharded
 (3 shard x [2 data + 1 arbiter] dirotasi di 3 node, 3 config server, 2 mongos); alasan dan trade-off di `docs/decisions/ADR-0001-storage.md`
 (status: **diusulkan**, bukti gate PoC masih menunggu cluster).
 

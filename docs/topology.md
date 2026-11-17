@@ -1,5 +1,7 @@
 # Topology and RAM budget (D2)
 
+Pod/node/disk placement and traffic paths: `docs/deployment.md`.
+
 Demo target: **3 VMs** (separate kernels) on the 32 GB PC. Fill the declaration table in the README before the demo.
 
 ## Memory budget per component (requests / limits from Appendix B)
@@ -9,12 +11,12 @@ Demo target: **3 VMs** (separate kernels) on the 32 GB PC. Fill the declaration 
 | mongos | 2 | 128Mi | 256Mi | 256Mi | 512Mi |
 | Aggregator (>= 3 once Owner B scales) | 3 | 256Mi | 512Mi | 768Mi | 1536Mi |
 | RabbitMQ | 1 | 512Mi | 1Gi | 512Mi | 1024Mi |
-| client-api, auth-service | 2 | 128Mi | 256Mi | 256Mi | 512Mi |
+| client-api ×2, auth-service ×2 | 4 | 128Mi | 256Mi | 512Mi | 1024Mi |
 | consumers | 3 | 128Mi | 256Mi | 384Mi | 768Mi |
 | mocks | 2 | 64Mi | 128Mi | 128Mi | 256Mi |
 | Sensor Pantai | 1 | 128Mi | 256Mi | 128Mi | 256Mi |
 | Prometheus, Grafana, Jaeger | 3 | 128Mi | 256Mi | 384Mi | 768Mi |
-| **Total (steady state)** | | | | **8960Mi (8.75Gi)** | **17920Mi (17.5Gi)** |
+| **Total (steady state)** | | | | **9216Mi (9Gi)** | **18432Mi (18Gi)** |
 
 Per node (3 nodes) the average is about 3Gi of requests and 6Gi if every pod hit its limit. Add OS + k3s (about 1Gi per VM; more on the
 control-plane node), the Tester Agent (no limits declared by the official manifest), and recovery peaks (initial sync, `store-init`
