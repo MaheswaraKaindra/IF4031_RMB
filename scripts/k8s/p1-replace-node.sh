@@ -8,8 +8,8 @@
 #      volume lived on the dead node and can never be mounted elsewhere), start it again -> new empty volume on <new-node>
 #   3. republishes the placement map (store-topology) with the new node name
 #   4. waits until every shard has two caught-up data copies again, then verifies no record was lost
-# Pods of other workloads on the dead node are rescheduled by Kubernetes itself (after its ~5 min eviction timeout);
-# --delete-old-node removes the Node object so that happens immediately.
+# Pods of other workloads on the dead node are rescheduled by Kubernetes itself (after the eviction toleration: 20s in the
+# demo overlay, 5 min by default); --delete-old-node removes the Node object so that happens immediately.
 set -euo pipefail
 source "$(dirname "$0")/p1-lib.sh"
 SLOT=${1:?slot 1|2|3}; NEW=${2:?new node name (kubectl get nodes)}; DELETE_OLD=${3:-}

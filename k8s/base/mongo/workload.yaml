@@ -1,6 +1,4 @@
-# TEMPORARY single-node MongoDB (M1 behaviour) so B/C can develop on the M1 repository.
-# It is NOT the P1 storage design; it is replaced by k8s/base/store once the
-# storage PoC (docs/decisions/ADR-0001-storage.md) selects a distributed layout.
+# Single-node MongoDB for the dev overlay only (M1 behaviour). The demo overlay deletes it and uses the sharded store in k8s/store.
 # Secret mongo-secret (MONGO_INITDB_ROOT_USERNAME/PASSWORD) comes from scripts/k8s/create-secrets.sh.
 # Data lives on the node-local default StorageClass (k3s local-path / kind standard), never network storage.
 apiVersion: apps/v1

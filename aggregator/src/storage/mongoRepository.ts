@@ -57,11 +57,11 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         this.topology = o.topology;
         this.deadlineMs = o.deadlineMs ?? 3000;
         this.writeConcern = { w: o.writeW ?? 1, wtimeout: o.writeTimeoutMs ?? 1500 };
-        // Background probes only (never on the request path). Must stay clearly above the driver's 500ms minimum re-check
-        // interval, otherwise a member that comes back can fail selection forever (observed after a restore).
+        // Must stay clearly above the driver's 500ms minimum re-check interval, otherwise a member that comes back can fail
+        // server selection forever.
         this.probeMs = o.probeTimeoutMs ?? 1500;
         if (this.topology) {
-            // Liveness is measured continuously in the background so that a dead member never adds latency to a request.
+            // Measured in the background so that a dead member never adds latency to a request.
             this.prober = setInterval(() => void this.refreshStatus(), o.probeIntervalMs ?? 2000);
             this.prober.unref();
             void this.refreshStatus();
@@ -183,7 +183,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         try {
             // Raw `find` instead of a driver cursor: only the server reply says whether mongos dropped a shard's rows
             // (`partialResultsReturned`), e.g. when maxTimeMS expires on a busy shard. The driver hides that flag, and a silently
-            // short page with no next_cursor would look like the END of the data (observed: 2324 of 40264 records "complete").
+            // short page with no next_cursor would look like the END of the data.
             const reply = await this.client.db(this.dbName).command({
                 find: HAZARDS, filter, sort, limit: q.limit + 1, batchSize: q.limit + 1, singleBatch: true,
                 allowPartialResults: true, maxTimeMS,
@@ -211,8 +211,8 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         }
     }
 
-    // Full scans (analytics, audit checksum). Healthy cluster: ONE cursor through mongos (it also filters orphaned documents
-    // during chunk migration). When the cached probe says a unit is unreachable, mongos would wait out the whole scan budget
+    // Full scans (analytics, audit checksum). Healthy cluster: through mongos (it also filters orphaned documents during
+    // chunk migration). When the cached probe says a unit is unreachable, mongos would wait out the whole scan budget
     // for the dead shard (it has no tunable to give up earlier), so instead read every REACHABLE unit directly, in parallel,
     // de-duplicated by _id (a stale orphan copy can never be counted twice) and report the dead units as unavailable.
     // O(N) in records: fine for the demo dataset; swap for $group pipelines (healthy case) if it grows by orders of magnitude.
@@ -223,8 +223,8 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         const down = status.filter((u) => !u.available).map((u) => u.unit);
         const scanMs = this.o.scanDeadlineMs ?? 8000;
         const pageSize = this.o.scanPageSize ?? 5000;
-        // maxTimeMS does not bound a whole cursor (every getMore gets a fresh budget), so the deadline is enforced HERE and
-        // anything that arrives later is discarded: a late callback can never change an answer that was already returned.
+        // maxTimeMS bounds one command, not a whole multi-page scan, so the deadline is enforced HERE and anything that
+        // arrives later is discarded: a late callback can never change an answer that was already returned.
         const bounded = async (work: (live: () => boolean) => Promise<void>): Promise<boolean> => {
             let live = true;
             let timer: NodeJS.Timeout | undefined;
@@ -341,7 +341,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
     }
 
     // A unit is available for READS when at least one data-bearing member is a reachable primary or secondary.
-    // Served from a cache refreshed in the background (every ~2s, 500ms probe timeout): never on the request path.
+    // Served from the background-refreshed cache: never probed on the request path.
     async unitStatus(): Promise<UnitStatus[]> {
         if (!this.topology) return [{ unit: 'mongo', available: true }];
         if (this.statusCache && Date.now() - this.statusCache.at < 10_000) return this.statusCache.value;

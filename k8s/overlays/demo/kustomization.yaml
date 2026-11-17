@@ -22,8 +22,8 @@ configMapGenerator:
       - STORE_STRICT_WRITES=0    # 1 = fail closed on a write-concern timeout (see docs/consistency.md)
 
 patches:
-  # Node loss: by default Kubernetes waits 300s before moving pods off an unreachable node (measured on the kind rehearsal:
-  # ~6 min of public-API outage when the node hosting client-api/aggregator died). Stateless pods leave after 20s instead.
+  # Node loss: by default Kubernetes waits 300s before moving pods off an unreachable node, i.e. minutes of outage for any
+  # single-copy service on it. Stateless pods leave after 20s instead.
   # Store StatefulSets are NOT included: their volume is node-local, a replacement needs p1-replace-node.sh.
   - target: {kind: Deployment}
     patch: |-

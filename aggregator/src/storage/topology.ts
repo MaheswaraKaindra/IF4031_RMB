@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 export interface StoreMember {
     name: string;   // pod/StatefulSet name, e.g. mongo-s1-a
-    host: string;   // DNS name reachable from the aggregator
+    host: string;
     node: string;   // kubectl node name the member is pinned to
     arbiter: boolean;
 }

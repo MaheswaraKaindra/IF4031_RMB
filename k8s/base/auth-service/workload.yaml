@@ -1,8 +1,5 @@
 # Secret auth-service-secret (JWT_PRIVATE_KEY_B64, AUTH_CLIENT_*_SECRET_SHA256) is created by
-# scripts/k8s/create-secrets.sh.
-#
-# replicas stays 1: refresh tokens and the login throttle are in-memory (M1), so a second replica
-# would break refresh-token rotation/reuse detection. Making that state shared is a known M1 debt.
+# scripts/k8s/create-secrets.sh. More than one replica needs the Service's ClientIP affinity below (the demo overlay runs 2).
 apiVersion: apps/v1
 kind: Deployment
 metadata:

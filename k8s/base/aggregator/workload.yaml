@@ -16,8 +16,8 @@ spec:
     metadata:
       labels: {app.kubernetes.io/name: aggregator, role: aggregator}
     spec:
-      # Compose used depends_on: service_healthy. The aggregator exits(1) if its first Mongo connect
-      # fails (index.ts), which would crash-loop with growing backoff on a cold cluster.
+      # The aggregator exits(1) if its first Mongo connect fails (index.ts), which would crash-loop with a growing
+      # backoff on a cold cluster.
       initContainers:
         - name: wait-for-deps
           image: docker.io/library/busybox:1.37

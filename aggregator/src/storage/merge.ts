@@ -17,7 +17,6 @@ export function compareRecords(a: HazardRecord, b: HazardRecord, sort: SortOrder
     return a.hazard_id < b.hazard_id ? -1 : a.hazard_id > b.hazard_id ? 1 : 0;
 }
 
-// True when `r` comes strictly after the cursor position in the sort order.
 export function isAfterCursor(r: HazardRecord, sort: SortOrder, k: string, h: string): boolean {
     const probe = { hazard_id: h, occurred_at: k, ingested_at: k } as HazardRecord;
     return compareRecords(r, probe, sort) > 0;
