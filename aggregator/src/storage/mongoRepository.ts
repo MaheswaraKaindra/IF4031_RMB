@@ -42,7 +42,7 @@ function toRecord(doc: Document): HazardRecord {
 export class MongoCanonicalRepository implements ICanonicalRepository {
     private readonly client: MongoClient;
     private readonly dbName: string;
-    private readonly topology: StoreTopology | undefined;
+    private topology: StoreTopology | undefined;
     private readonly deadlineMs: number;
     private readonly writeConcern: { w: number | 'majority'; wtimeout: number };
     private readonly memberClients = new Map<string, MongoClient>();
@@ -66,6 +66,12 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
             this.prober.unref();
             void this.refreshStatus();
         }
+    }
+
+    // Node names change when a slot moves to a replacement machine (scripts/k8s/p1-replace-node.sh); member hosts are
+    // stable DNS names, so connections and probes are unaffected. Only placement answers (/location, report) change.
+    setTopology(t: StoreTopology): void {
+        if (this.topology) this.topology = t;
     }
 
     private hazards(): Collection<Document> {
