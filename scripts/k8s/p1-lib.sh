@@ -12,44 +12,78 @@ envget() { grep -E "^$1=" "$ENV_FILE" | tail -n1 | cut -d= -f2-; }
 AUDIT_TOKEN=$(envget AUDIT_TOKEN)
 [ -n "$AUDIT_TOKEN" ] || { echo "AUDIT_TOKEN missing in $ENV_FILE" >&2; exit 1; }
 
-# Runs the measurement tool inside the aggregator pod (it owns the storage credentials).
-tool() { kubectl -n "$NS" exec deploy/aggregator -- node dist/tools/store-tool.js "$@"; }
+# Runs the measurement tool inside a Ready aggregator pod (it owns the storage credentials); `exec deploy/...` may pick
+# a pod stuck on a dead node.
+tool() {
+  local pod; pod=$(ready_pod aggregator)
+  [ -n "$pod" ] || { echo "no Ready aggregator pod" >&2; return 1; }
+  kubectl -n "$NS" exec "$pod" -c aggregator -- node dist/tools/store-tool.js "$@"
+}
+
+# Where requests go. Default: kubectl port-forwards (see forward() below).
+# On the real cluster prefer the NodePorts of a node OUTSIDE the slot under test, so the probe path itself survives:
+#   NODE_IP=192.168.56.11 scripts/k8s/p1-node-loss.sh 2 --manual
+NODE_IP=${NODE_IP:-}
+if [ -n "$NODE_IP" ]; then
+  AUDIT_URL=${AUDIT_URL:-http://$NODE_IP:30000}; AUTH_URL=${AUTH_URL:-http://$NODE_IP:30090}; API_URL=${API_URL:-http://$NODE_IP:30080}
+fi
+AUDIT_URL=${AUDIT_URL:-}; AUTH_URL=${AUTH_URL:-}; API_URL=${API_URL:-}
 
 PF_PIDS=()
-cleanup_pf() { local p; for p in ${PF_PIDS[@]+"${PF_PIDS[@]}"}; do kill "$p" 2>/dev/null || true; done; }
+cleanup_pf() { local p; for p in ${PF_PIDS[@]+"${PF_PIDS[@]}"}; do pkill -P "$p" 2>/dev/null || true; kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; done; }
 trap cleanup_pf EXIT
 
 wait_http() { # <url>
   local i; for i in $(seq 1 25); do curl -s -m 2 -o /dev/null "$1" && return 0; sleep 1; done
-  echo "port-forward for $1 did not come up" >&2; return 1
+  echo "endpoint $1 did not come up" >&2; return 1
+}
+
+# ready_pod <app label>: a Ready pod that is not being deleted (a pod on a dead node stays "Terminating" for good)
+ready_pod() {
+  kubectl -n "$NS" get pods -l "app.kubernetes.io/name=$1" -o json | jq -r '[.items[]
+    | select(.metadata.deletionTimestamp == null)
+    | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))][0].metadata.name // empty'
+}
+pod_ready() { [ "$(kubectl -n "$NS" get pod "$1" -o jsonpath='{.metadata.deletionTimestamp}|{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)" = "|True" ]; }
+
+# forward <app label> <local-port> <remote-port>: a port-forward pins ONE pod and is NOT closed when that pod's node dies,
+# so forward to an explicitly chosen Ready pod and move to another one as soon as it stops being Ready (the same moment a
+# Service drops the endpoint).
+forward() {
+  ( set +e   # the callers run under `set -e`: a failed kill/wait of the old forward must not end this loop
+    while :; do
+      pod=$(ready_pod "$1")
+      if [ -z "$pod" ]; then sleep 2; continue; fi
+      kubectl -n "$NS" port-forward "pod/$pod" "$2:$3" >/dev/null 2>&1 & fpid=$!
+      while kill -0 "$fpid" 2>/dev/null && pod_ready "$pod"; do sleep 2; done
+      kill "$fpid" 2>/dev/null; wait "$fpid" 2>/dev/null
+    done ) 2>/dev/null &
+  PF_PIDS+=($!)
 }
 
 # Audit API (aggregator port 3001, the only published aggregator entry)
 start_forward() {
-  kubectl -n "$NS" port-forward svc/aggregator-audit "$LOCAL_PORT:3001" >/dev/null 2>&1 &
-  PF_PIDS+=($!)
-  wait_http "http://127.0.0.1:$LOCAL_PORT/analytics"
+  if [ -z "$AUDIT_URL" ]; then forward aggregator "$LOCAL_PORT" 3001; AUDIT_URL=http://127.0.0.1:$LOCAL_PORT; fi
+  wait_http "$AUDIT_URL/analytics"
 }
 
 # Public client path (auth-service + client-api): what a Tim Lapangan / Media client actually experiences
 start_client_forward() {
-  kubectl -n "$NS" port-forward svc/auth-service "$AUTH_LOCAL:8090" >/dev/null 2>&1 &
-  PF_PIDS+=($!)
-  kubectl -n "$NS" port-forward svc/client-api "$API_LOCAL:8080" >/dev/null 2>&1 &
-  PF_PIDS+=($!)
-  wait_http "http://127.0.0.1:$AUTH_LOCAL/health"
-  wait_http "http://127.0.0.1:$API_LOCAL/health"
+  if [ -z "$AUTH_URL" ]; then forward auth-service "$AUTH_LOCAL" 8090; AUTH_URL=http://127.0.0.1:$AUTH_LOCAL; fi
+  if [ -z "$API_URL" ]; then forward client-api "$API_LOCAL" 8080; API_URL=http://127.0.0.1:$API_LOCAL; fi
+  wait_http "$AUTH_URL/health"
+  wait_http "$API_URL/health"
 }
 
 # client_events -> "<http_code> <seconds> <complete|partial>"   (a fresh token each call: access tokens live 60s)
 client_events() {
   local secret token out code t partial
   secret=$(envget AUTH_CLIENT_FIELD_TEAM_SECRET)
-  token=$(curl -s -m 5 -X POST "http://127.0.0.1:$AUTH_LOCAL/token" -H 'content-type: application/json' \
+  token=$(curl -s -m 5 -X POST "$AUTH_URL/token" -H 'content-type: application/json' \
     -d "{\"client_id\":\"field-team\",\"client_secret\":\"$secret\"}" | jq -r '.access_token // empty')
   [ -n "$token" ] || { echo "000 0 no-token"; return; }
   out=$(mktemp)
-  read -r code t < <(curl -s -m 10 -o "$out" -w '%{http_code} %{time_total}\n' -H "authorization: Bearer $token" "http://127.0.0.1:$API_LOCAL/events?limit=50" || echo "000 10")
+  read -r code t < <(curl -s -m 10 -o "$out" -w '%{http_code} %{time_total}\n' -H "authorization: Bearer $token" "$API_URL/events?limit=50" || echo "000 10")
   partial=$(jq -r 'if .partial == true then "partial" else "complete" end' "$out" 2>/dev/null || echo "unparsable")
   rm -f "$out"
   echo "$code $t $partial"
@@ -58,7 +92,7 @@ client_events() {
 # audit <path> -> body on stdout; exit status 0 only for HTTP 200 within 15s
 audit() {
   local out code
-  out=$(curl -s -m 15 -w '\n%{http_code}' -H "authorization: Bearer $AUDIT_TOKEN" "http://127.0.0.1:$LOCAL_PORT$1") || return 2
+  out=$(curl -s -m 15 -w '\n%{http_code}' -H "authorization: Bearer $AUDIT_TOKEN" "$AUDIT_URL$1") || return 2
   code=${out##*$'\n'}
   printf '%s' "${out%$'\n'*}"
   [ "$code" = 200 ]

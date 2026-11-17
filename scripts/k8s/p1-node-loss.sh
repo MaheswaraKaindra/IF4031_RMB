@@ -27,6 +27,8 @@ if ! redundancy_ok; then
 fi
 collect_ids "$SNAP/ids-before"; snapshot "$SNAP/before.jsonl"
 echo "before: $(wc -l < "$SNAP/ids-before" | tr -d ' ') records"; jq -c . "$SNAP/before.jsonl"
+IDS_OUT=${IDS_OUT:-${TMPDIR:-/tmp}/p1-ids-before-slot$SLOT.txt}
+cp "$SNAP/ids-before" "$IDS_OUT"; echo "pre-loss ID list saved to $IDS_OUT (input for p1-replace-node.sh if the node never returns)"
 
 complete=0; partial=0; bad=0; slow=0; client_ok=0
 probe_once() {
@@ -58,6 +60,14 @@ else
 fi
 echo "answers: audit/analytics complete=$complete explicit_partial=$partial | client-api ok=$client_ok slow(>2s)=$slow | bad=$bad"
 
+slot_node=$(kubectl get nodes -l "bnpb.io/store-slot=$SLOT" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+slot_ready=$(kubectl get node "$slot_node" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+if [ "$MANUAL" = "--manual" ] && [ "$slot_ready" != True ]; then
+  echo "node ${slot_node:-?} of slot $SLOT is gone (not Ready): no automatic rejoin possible."
+  echo "answers during the loss above are the criterion-4 evidence (bad=$bad). Next, with a NEW machine joined to the cluster:"
+  echo "  IDS_BEFORE=$IDS_OUT scripts/k8s/p1-replace-node.sh $SLOT <new-node> --delete-old-node"
+  [ "$bad" = 0 ] && exit 0 || exit 1
+fi
 echo ">>> waiting for re-sync / redundancy (up to 20 min)"
 for _ in $(seq 1 120); do redundancy_ok && break; sleep 10; done
 redundancy_ok && echo "redundancy restored: $(members_json | jq -c 'group_by(.unit) | map({unit: .[0].unit, counts: map(.count)})')" \
