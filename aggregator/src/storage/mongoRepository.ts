@@ -18,6 +18,7 @@ export interface MongoRepositoryOptions {
     probePassword?: string | undefined;
     deadlineMs?: number;            // every read is bounded by this (keep it below the caller's own timeout, e.g. client-api 2s)
     scanDeadlineMs?: number;        // budget of one full scan (analytics, checksum); beyond it the answer is reported partial
+    scanPageSize?: number;          // records per keyset page of a full scan (tests use a tiny value to cross many pages)
     probeTimeoutMs?: number;        // per-member liveness probe; probes run in the BACKGROUND, queries only read the cache
     probeIntervalMs?: number;
     strictWrites?: boolean;         // true: a write-concern timeout is an UNKNOWN outcome (fail closed) instead of a degraded ack
@@ -215,6 +216,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         const tStatus = Date.now() - tStart;
         const down = status.filter((u) => !u.available).map((u) => u.unit);
         const scanMs = this.o.scanDeadlineMs ?? 8000;
+        const pageSize = this.o.scanPageSize ?? 5000;
         // maxTimeMS does not bound a whole cursor (every getMore gets a fresh budget), so the deadline is enforced HERE and
         // anything that arrives later is discarded: a late callback can never change an answer that was already returned.
         const bounded = async (work: (live: () => boolean) => Promise<void>): Promise<boolean> => {
@@ -232,21 +234,36 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         };
         if (down.length === 0 || !this.topology) {
             let complete = false;
+            let truncated = false;
             try {
+                // Keyset pages of single-batch `find`s by _id instead of one driver cursor, for two reasons:
+                // 1. only the raw reply carries `partialResultsReturned` (mongos dropped a shard's rows without an error);
+                // 2. there is no getMore: the mongos Service load-balances per connection, and a getMore that lands on the
+                //    OTHER mongos fails with CursorNotFound.
                 complete = await bounded(async (live) => {
-                    const cursor = this.hazards().find(filter, { allowPartialResults: true, maxTimeMS: scanMs + 2000, readPreference: 'primaryPreferred', projection });
-                    try {
-                        for await (const d of cursor) { if (!live()) break; onDoc(d); }
-                    } finally {
-                        void cursor.close().catch(() => undefined);
+                    const db = this.client.db(this.dbName);
+                    let after: unknown;
+                    for (;;) {
+                        const f = (after === undefined ? filter : { $and: [filter, { _id: { $gt: after } }] }) as Filter<Document>;
+                        const reply = await db.command({
+                            find: HAZARDS, filter: f, projection, sort: { _id: 1 }, limit: pageSize, batchSize: pageSize,
+                            singleBatch: true, allowPartialResults: true, maxTimeMS: scanMs,
+                        }, { readPreference: 'primaryPreferred' });
+                        if (!live()) return;
+                        if (reply['cursor']?.['partialResultsReturned'] === true) { truncated = true; return; }
+                        const docs = (reply['cursor']?.['firstBatch'] ?? []) as Document[];
+                        for (const d of docs) onDoc(d);
+                        if (docs.length < pageSize) return;
+                        after = docs[docs.length - 1]!['_id'];
                     }
                 });
             } catch {
                 complete = false;
             }
+            if (truncated) complete = false;
             const tScan = Date.now() - tStart;
             const after = (await this.unitStatus()).filter((u) => !u.available).map((u) => u.unit);
-            logger.info({ path: 'router', complete, status_ms: tStatus, scan_ms: tScan, total_ms: Date.now() - tStart }, 'store scan');
+            logger.info({ path: 'router', complete, truncated, status_ms: tStatus, scan_ms: tScan, total_ms: Date.now() - tStart }, 'store scan');
             // With allowPartialResults a maxTimeMS expiry can return what was read so far WITHOUT an error: never present that as complete.
             if (!complete) return { partial: true, unavailable: after.length ? after : ['scan-timeout'] };
             return { partial: after.length > 0, unavailable: after };
