@@ -1,0 +1,50 @@
+# Secret auth-service-secret (JWT_PRIVATE_KEY_B64, AUTH_CLIENT_*_SECRET_SHA256) is created by
+# scripts/k8s/create-secrets.sh.
+#
+# replicas stays 1: refresh tokens and the login throttle are in-memory (M1), so a second replica
+# would break refresh-token rotation/reuse detection. Making that state shared is a known M1 debt.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  labels: {app.kubernetes.io/name: auth-service, role: api}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: auth-service}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: auth-service, role: api}
+    spec:
+      containers:
+        - name: auth-service
+          image: bnpb/auth-service
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8090}]
+          envFrom:
+            - configMapRef: {name: auth-service-config}
+            - secretRef: {name: auth-service-secret}
+          resources:
+            requests: {memory: 128Mi}
+            limits: {memory: 256Mi}
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1000}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  labels: {app.kubernetes.io/name: auth-service, role: api}
+spec:
+  selector: {app.kubernetes.io/name: auth-service}
+  ports: [{name: http, port: 8090, targetPort: http}]

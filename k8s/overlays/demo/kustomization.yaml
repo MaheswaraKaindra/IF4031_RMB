@@ -1,0 +1,75 @@
+# Final demo layout: 3 separate-kernel nodes (VMs), sharded store, sensor, observability.
+# Apply with scripts/deploy.sh demo (substitutes REGISTRY_PLACEHOLDER with $REGISTRY and creates the prerequisites).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - ../../store
+  - ../../sensor
+  - ../../observability
+  - entrypoints.yaml
+
+configMapGenerator:
+  - name: aggregator-config
+    behavior: merge
+    literals:
+      - STORE_MODE=sharded
+      - STORE_WRITE_W=2
+      - STORE_WRITE_TIMEOUT_MS=1500
+      - STORE_DEADLINE_MS=1500   # below client-api's 2s upstream timeout
+      - STORE_STRICT_WRITES=0    # 1 = fail closed on a write-concern timeout (see docs/consistency.md)
+
+patches:
+  # The temporary single-node Mongo is replaced by k8s/store.
+  - patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: mongo
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: mongo
+  # Aggregator waits for the router instead of the deleted mongo Service, and reads the placement map.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: aggregator
+      spec:
+        template:
+          spec:
+            initContainers:
+              # Waits until the aggregator's OWN credentials work through mongos. The store-init Job creates that user
+              # (after sharding the collection), so this also means "cluster bootstrap finished".
+              - name: wait-for-deps
+                image: docker.io/library/mongo:7
+                env:
+                  - {name: HOME, value: /tmp}
+                  - name: MONGO_URI
+                    valueFrom: {secretKeyRef: {name: aggregator-secret, key: MONGO_URI}}
+                command:
+                  - bash
+                  - -c
+                  - |
+                    until mongosh "$MONGO_URI" --quiet --eval 'quit(db.hello().ok ? 0 : 1)' >/dev/null 2>&1 && (exec 3<>/dev/tcp/rabbitmq/5672) 2>/dev/null; do
+                      echo "waiting for store bootstrap and rabbitmq"; sleep 3
+                    done
+            containers:
+              - name: aggregator
+                volumeMounts:
+                  - {name: store-topology, mountPath: /etc/store, readOnly: true}
+            volumes:
+              - name: store-topology
+                configMap: {name: store-topology}
+
+images:
+  - {name: bnpb/aggregator, newName: REGISTRY_PLACEHOLDER/bnpb/aggregator, newTag: demo}
+  - {name: bnpb/client-api, newName: REGISTRY_PLACEHOLDER/bnpb/client-api, newTag: demo}
+  - {name: bnpb/auth-service, newName: REGISTRY_PLACEHOLDER/bnpb/auth-service, newTag: demo}
+  - {name: bnpb/consumers, newName: REGISTRY_PLACEHOLDER/bnpb/consumers, newTag: demo}
+  - {name: bnpb/mock-bmkg, newName: REGISTRY_PLACEHOLDER/bnpb/mock-bmkg, newTag: demo}
+  - {name: bnpb/mock-pvmbg, newName: REGISTRY_PLACEHOLDER/bnpb/mock-pvmbg, newTag: demo}
