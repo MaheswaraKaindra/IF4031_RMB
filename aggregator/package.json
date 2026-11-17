@@ -7,7 +7,8 @@
     "test": "node --import tsx --test src/storage/storage.test.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test:mongo": "node --import tsx --test src/storage/mongo.integration.test.ts"
   },
   "keywords": [],
   "author": "",
