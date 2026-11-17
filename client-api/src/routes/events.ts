@@ -47,5 +47,8 @@ eventsRouter.get('/', async (req, res) => {
 
     const sources = statusResult.status === 'fulfilled' ? buildSources(statusResult.value) : null;
 
-    res.json({ events: eventsResult.value.map((event) => project(event, fields)), sources });
+    const { events, partial, unavailable_units } = eventsResult.value;
+    const body = { events: events.map((event) => project(event, fields)), sources };
+    // M1 response shape is unchanged for complete answers; incomplete ones are flagged explicitly.
+    res.json(partial ? { ...body, partial: true, unavailable_units } : body);
 });

@@ -16,14 +16,32 @@ export async function connectMongo(): Promise<void> {
     const uri = process.env.MONGO_URI;
     if (!uri) throw new Error('MONGO_URI is not set');
 
-    client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
+    // STORE_MODE=sharded: records are keyed by deterministic _id (= hazard_id, the hashed shard key), writes
+    // wait for 2 data members, reads prefer the primary but fall back to a secondary during an election.
+    const sharded = isSharded();
+    client = new MongoClient(uri, {
+        serverSelectionTimeoutMS: 5000,
+        ...(sharded ? { readPreference: 'primaryPreferred' as const, writeConcern: { w: Number(process.env.STORE_WRITE_W ?? 2), wtimeoutMS: Number(process.env.STORE_WRITE_TIMEOUT_MS ?? 1500) } } : {}),
+    });
     await client.connect();
     db = client.db();
 
-    await getHazards().createIndex({ source: 1, source_ref_id: 1 }, { unique: true });
-    await getHazards().createIndex({ occurred_at: -1 });
-    await getHazards().createIndex({ hazard_id: 1 }, { unique: true });
-    logger.info('Connected to MongoDB');
+    // Query-supporting indexes (non-unique, fine on a sharded collection).
+    await getHazards().createIndex({ occurred_at: -1, hazard_id: 1 });
+    await getHazards().createIndex({ ingested_at: 1, hazard_id: 1 });
+    await getHazards().createIndex({ source: 1, source_ref_id: 1 }, sharded ? {} : { unique: true });
+    // Unique secondary indexes cannot span shards unless prefixed by the shard key; identity is enforced by _id instead.
+    if (!sharded) await getHazards().createIndex({ hazard_id: 1 }, { unique: true });
+    logger.info({ store_mode: sharded ? 'sharded' : 'single' }, 'Connected to MongoDB');
+}
+
+export function isSharded(): boolean {
+    return process.env.STORE_MODE === 'sharded';
+}
+
+export function getMongoClient(): MongoClient {
+    if (!client) throw new Error('MongoDB not connected');
+    return client;
 }
 
 export async function pingMongo(timeoutMs: number): Promise<boolean> {
