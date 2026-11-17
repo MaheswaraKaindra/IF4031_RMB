@@ -1,4 +1,5 @@
 import { MongoClient, MongoWriteConcernError, type Collection, type Document, type Filter } from 'mongodb';
+import { logger } from '../logger.js';
 import { AnalyticsAccumulator } from './analytics.js';
 import { decodeCursor, encodeCursor } from './cursor.js';
 import { hazardIdFor } from './identity.js';
@@ -16,6 +17,7 @@ export interface MongoRepositoryOptions {
     probeUser?: string | undefined;     // shard-local credentials for direct member reads
     probePassword?: string | undefined;
     deadlineMs?: number;            // every read is bounded by this (keep it below the caller's own timeout, e.g. client-api 2s)
+    scanDeadlineMs?: number;        // budget of one full scan (analytics, checksum); beyond it the answer is reported partial
     probeTimeoutMs?: number;        // per-member liveness probe; probes run in the BACKGROUND, queries only read the cache
     probeIntervalMs?: number;
     strictWrites?: boolean;         // true: a write-concern timeout is an UNKNOWN outcome (fail closed) instead of a degraded ack
@@ -54,7 +56,9 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         this.topology = o.topology;
         this.deadlineMs = o.deadlineMs ?? 3000;
         this.writeConcern = { w: o.writeW ?? 1, wtimeout: o.writeTimeoutMs ?? 1500 };
-        this.probeMs = o.probeTimeoutMs ?? 500;
+        // Background probes only (never on the request path). Must stay clearly above the driver's 500ms minimum re-check
+        // interval, otherwise a member that comes back can fail selection forever (observed after a restore).
+        this.probeMs = o.probeTimeoutMs ?? 1500;
         if (this.topology) {
             // Liveness is measured continuously in the background so that a dead member never adds latency to a request.
             this.prober = setInterval(() => void this.refreshStatus(), o.probeIntervalMs ?? 2000);
@@ -165,9 +169,13 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         const sort = q.sort === 'occurred_desc' ? { occurred_at: -1, hazard_id: 1 } : { ingested_at: 1, hazard_id: 1 };
 
         const probe = this.unitStatus();
+        // mongos waits for a dead shard until maxTimeMS: when the (cached) probe already knows a unit is down, cut the wait
+        // short (healthy shards answer in well under 100ms) so partial answers stay far below the callers' own timeouts.
+        const known = await probe;
+        const maxTimeMS = known.some((u) => !u.available) ? Math.min(this.deadlineMs, 600) : this.deadlineMs;
         try {
             const docs = await this.hazards()
-                .find(filter, { allowPartialResults: true, maxTimeMS: this.deadlineMs, readPreference: 'primaryPreferred' })
+                .find(filter, { allowPartialResults: true, maxTimeMS, readPreference: 'primaryPreferred' })
                 .sort(sort as never).limit(q.limit + 1).toArray();
             const un = (await probe).filter((u) => !u.available).map((u) => u.unit);
             const items = docs.slice(0, q.limit).map(toRecord);
@@ -185,44 +193,92 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         }
     }
 
-    // Aggregation runs in the app over a projection so the same `allowPartialResults` + probe path decides
-    // partial-ness, and mongos filters orphaned documents during chunk migration. O(N) in records: fine for
-    // the demo dataset; swap for $group pipelines (healthy case) if the dataset grows by orders of magnitude.
+    // Full scans (analytics, audit checksum). Healthy cluster: ONE cursor through mongos (it also filters orphaned documents
+    // during chunk migration). When the cached probe says a unit is unreachable, mongos would wait out the whole scan budget
+    // for the dead shard (it has no tunable to give up earlier), so instead read every REACHABLE unit directly, in parallel,
+    // de-duplicated by _id (a stale orphan copy can never be counted twice) and report the dead units as unavailable.
+    // O(N) in records: fine for the demo dataset; swap for $group pipelines (healthy case) if it grows by orders of magnitude.
+    private async scan(filter: Filter<Document>, projection: Document, onDoc: (d: Document) => void): Promise<{ partial: boolean; unavailable: string[] }> {
+        const tStart = Date.now();
+        const status = await this.unitStatus();
+        const tStatus = Date.now() - tStart;
+        const down = status.filter((u) => !u.available).map((u) => u.unit);
+        const scanMs = this.o.scanDeadlineMs ?? 8000;
+        // maxTimeMS does not bound a whole cursor (every getMore gets a fresh budget), so the deadline is enforced HERE and
+        // anything that arrives later is discarded: a late callback can never change an answer that was already returned.
+        const bounded = async (work: (live: () => boolean) => Promise<void>): Promise<boolean> => {
+            let live = true;
+            let timer: NodeJS.Timeout | undefined;
+            const timeout = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), scanMs); });
+            const run = work(() => live).then(() => 'done' as const);
+            run.catch(() => undefined);
+            try {
+                return (await Promise.race([run, timeout])) === 'done';
+            } finally {
+                live = false;
+                clearTimeout(timer);
+            }
+        };
+        if (down.length === 0 || !this.topology) {
+            let complete = false;
+            try {
+                complete = await bounded(async (live) => {
+                    const cursor = this.hazards().find(filter, { allowPartialResults: true, maxTimeMS: scanMs, readPreference: 'primaryPreferred', projection });
+                    try {
+                        for await (const d of cursor) { if (!live()) break; onDoc(d); }
+                    } finally {
+                        void cursor.close().catch(() => undefined);
+                    }
+                });
+            } catch {
+                complete = false;
+            }
+            const tScan = Date.now() - tStart;
+            const after = (await this.unitStatus()).filter((u) => !u.available).map((u) => u.unit);
+            logger.info({ path: 'router', complete, status_ms: tStatus, scan_ms: tScan, total_ms: Date.now() - tStart }, 'store scan');
+            // With allowPartialResults a maxTimeMS expiry can return what was read so far WITHOUT an error: never present that as complete.
+            if (!complete) return { partial: true, unavailable: after.length ? after : ['scan-timeout'] };
+            return { partial: after.length > 0, unavailable: after };
+        }
+        const seen = new Set<string>();
+        const failedUnits: string[] = [...down];
+        await Promise.all(this.topology.units.filter((u) => !down.includes(u.name)).map(async (u) => {
+            for (const m of u.members.filter((x) => !x.arbiter)) {
+                const docs: Document[] = [];
+                try {
+                    const ok = await bounded(async (live) => {
+                        const cursor = this.memberClient(m, true).db(this.dbName).collection(HAZARDS)
+                            .find(filter, { maxTimeMS: scanMs, readPreference: 'secondaryPreferred', projection });
+                        try {
+                            for await (const d of cursor) { if (!live()) break; docs.push(d); }
+                        } finally {
+                            void cursor.close().catch(() => undefined);
+                        }
+                    });
+                    if (!ok) continue;
+                } catch { continue; /* try the unit's other data member */ }
+                for (const d of docs) { const id = String(d['_id']); if (!seen.has(id)) { seen.add(id); onDoc(d); } }
+                return;
+            }
+            failedUnits.push(u.name);
+        }));
+        return { partial: true, unavailable: failedUnits };
+    }
+
     async aggregate(q: AnalyticsQuery): Promise<AnalyticsResult> {
         const acc = new AnalyticsAccumulator(q);
         const filter: Filter<Document> = {};
         if (q.from || q.to) filter['occurred_at'] = { ...(q.from ? { $gte: q.from } : {}), ...(q.to ? { $lte: q.to } : {}) };
-        const probe = this.unitStatus();
-        let failed = false;
-        try {
-            const cursor = this.hazards().find(filter, {
-                allowPartialResults: true, maxTimeMS: this.deadlineMs * 10, readPreference: 'primaryPreferred',
-                projection: { hazard_type: 1, severity: 1, area_name: 1, occurred_at: 1, 'attributes.potential_tsunami': 1, 'attributes.tsunami_warning': 1 },
-            });
-            for await (const d of cursor) acc.add(d as never);
-        } catch {
-            failed = true;
-        }
-        const un = (await probe).filter((u) => !u.available).map((u) => u.unit);
-        return acc.result(failed || un.length > 0, failed && !un.length ? ['store-router'] : un);
+        const r = await this.scan(filter, { hazard_type: 1, severity: 1, area_name: 1, occurred_at: 1, 'attributes.potential_tsunami': 1, 'attributes.tsunami_warning': 1 }, (d) => acc.add(d as never));
+        return acc.result(r.partial, r.unavailable);
     }
 
     async checksum(source?: Source): Promise<ChecksumResult> {
         const refs: string[] = [];
-        const probe = this.unitStatus();
-        let failed = false;
-        try {
-            const cursor = this.hazards().find(source ? { source } : {}, {
-                allowPartialResults: true, maxTimeMS: this.deadlineMs * 10, readPreference: 'primaryPreferred', projection: { source_ref_id: 1 },
-            });
-            for await (const d of cursor) refs.push(String(d['source_ref_id']));
-        } catch {
-            failed = true;
-        }
-        const un = (await probe).filter((u) => !u.available).map((u) => u.unit);
+        const r = await this.scan(source ? { source } : {}, { source_ref_id: 1 }, (d) => refs.push(String(d['source_ref_id'])));
         return {
             source: source ?? 'ALL', count: refs.length, checksum: checksumOfRefs(refs), algorithm: 'sha256',
-            as_of: new Date().toISOString(), partial: failed || un.length > 0, unavailable_units: failed && !un.length ? ['store-router'] : un,
+            as_of: new Date().toISOString(), partial: r.partial, unavailable_units: r.unavailable,
         };
     }
 
@@ -234,7 +290,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         if (!c) {
             const cred = auth && this.o.probeUser ? `${encodeURIComponent(this.o.probeUser)}:${encodeURIComponent(this.o.probePassword ?? '')}@` : '';
             const t = auth ? this.deadlineMs : this.probeMs;
-            const params = `directConnection=true&serverSelectionTimeoutMS=${t}&connectTimeoutMS=${t}${auth && cred ? '&authSource=admin' : ''}`;
+            const params = `directConnection=true&heartbeatFrequencyMS=1000&serverSelectionTimeoutMS=${t}&connectTimeoutMS=${t}${auth && cred ? '&authSource=admin' : ''}`;
             c = new MongoClient(`mongodb://${cred}${m.host}:27017/?${params}`);
             this.memberClients.set(key, c);
         }

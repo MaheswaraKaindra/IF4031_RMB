@@ -26,13 +26,37 @@ export async function connectMongo(): Promise<void> {
     await client.connect();
     db = client.db();
 
-    // Query-supporting indexes (non-unique, fine on a sharded collection).
+    // Query-supporting indexes. Sharded: building them needs EVERY shard, so a restart/reschedule while a unit is down must not
+    // crash-loop the aggregator (that is exactly when it gets rescheduled): keep retrying in the background; reads, ingestion
+    // (degraded acks) and the partial-aware audit API keep working without them (the bootstrap Job already created them).
+    if (sharded) {
+        void ensureIndexesWithRetry();
+    } else {
+        await ensureIndexes(false);
+    }
+    logger.info({ store_mode: sharded ? 'sharded' : 'single' }, 'Connected to MongoDB');
+}
+
+async function ensureIndexes(sharded: boolean): Promise<void> {
+    // Non-unique indexes are fine on a sharded collection.
     await getHazards().createIndex({ occurred_at: -1, hazard_id: 1 });
     await getHazards().createIndex({ ingested_at: 1, hazard_id: 1 });
     await getHazards().createIndex({ source: 1, source_ref_id: 1 }, sharded ? {} : { unique: true });
     // Unique secondary indexes cannot span shards unless prefixed by the shard key; identity is enforced by _id instead.
     if (!sharded) await getHazards().createIndex({ hazard_id: 1 }, { unique: true });
-    logger.info({ store_mode: sharded ? 'sharded' : 'single' }, 'Connected to MongoDB');
+}
+
+async function ensureIndexesWithRetry(): Promise<void> {
+    for (;;) {
+        try {
+            await ensureIndexes(true);
+            logger.info('query indexes ensured');
+            return;
+        } catch (error) {
+            logger.warn({ error: error instanceof Error ? error.message : String(error) }, 'could not ensure indexes (a shard is unreachable?); retrying in 15s');
+            await new Promise((r) => setTimeout(r, 15_000));
+        }
+    }
 }
 
 export function isSharded(): boolean {
