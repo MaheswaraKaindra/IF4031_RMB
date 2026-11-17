@@ -293,6 +293,8 @@ scripts/k8s/label-nodes.sh node-a node-b node-c
 # 2. Build + push image multi-arch, lalu deploy satu perintah
 PUSH=1 REGISTRY=<registry> TAG=demo scripts/k8s/build-images.sh
 REGISTRY=<registry> INSTALL_TESTER=1 scripts/deploy.sh demo
+#    tanpa registry: impor image langsung ke k3s di tiap VM lewat SSH (butuh sudo tanpa password untuk `k3s ctr`)
+#    scripts/k8s/import-images.sh user@vm1 user@vm2 user@vm3 && REGISTRY=local.import INSTALL_TESTER=1 scripts/deploy.sh demo
 # 3. Verifikasi
 scripts/k8s/verify-resources.sh && scripts/k8s/verify-isolation.sh && scripts/k8s/smoke.sh
 ```
@@ -307,14 +309,23 @@ Tester Agent: `scripts/k8s/install-tester-agent.sh` (manifest dan digest sesuai 
 | 1 sebaran data per node | `scripts/k8s/p1-load.sh 50000` |
 | 2 skew dan lonjakan satu wilayah | `scripts/k8s/p1-hotspot.sh 20000 sumatra` |
 | 3 query global, urutan, pagination | `scripts/k8s/p1-query.sh` |
-| 4 node + disk hilang: tidak ada HazardEvent hilang, jawaban tidak pernah 5xx/menggantung | `scripts/k8s/p1-node-loss.sh 1` (simulasi, PVC dihapus dan diverifikasi baru) atau `... 1 --manual` (hapus VM / Tester Agent) |
+| 4 node + disk hilang: tidak ada HazardEvent hilang, jawaban tidak pernah 5xx/menggantung | `scripts/k8s/p1-node-loss.sh 1` (simulasi, PVC dihapus dan diverifikasi baru) atau `NODE_IP=<ip node lain> scripts/k8s/p1-node-loss.sh 1 --manual` (matikan VM / Tester Agent; probe lewat NodePort node yang selamat, daftar ID sebelum kehilangan disimpan) |
 | 4 jawaban partial eksplisit + 7 banner dashboard | `scripts/k8s/p1-unit-loss.sh 1` (satu shard utuh tidak terjangkau), lalu buka `/analytics` |
-| 5 node kosong bergabung | otomatis (resync); hasil terlihat di akhir `p1-node-loss.sh` |
+| 5 node kosong bergabung | otomatis (resync); hasil terlihat di akhir `p1-node-loss.sh`. Mesin pengganti yang BERBEDA: `IDS_BEFORE=<file dari p1-node-loss> scripts/k8s/p1-replace-node.sh <slot> <node-baru> --delete-old-node` |
 | 6 tahan kehilangan berikutnya | `scripts/k8s/p1-node-loss.sh 2` setelah yang pertama selesai |
 | 7 dashboard analitik | buka `http://<node>:30000/analytics`, masukkan token audit, tombol "Cocokkan dengan Audit API" |
 | bukti lokasi/sebaran | `scripts/k8s/p1-report.sh` |
 
-Tanpa cluster: `cd aggregator && npm test` (12 tes: urutan lintas unit, cursor, partial, fencing, format checksum, kontrak Audit API terhadap referensi in-memory),
+Batas yang diketahui saat satu node MATI (diukur pada rehearsal kind, `docker stop` node): pod stateless pindah setelah ~70 s
+(toleransi 20 s di overlay demo, bukan 300 s bawaan); client-api dan mongos masing-masing 2 replika di node berbeda. Aggregator
+dan auth-service masih 1 replika (aggregator: menunggu leader election P2; auth: refresh token di memori), jadi bila node yang
+mati memuat salah satunya, permintaan gagal cepat (tanpa menggantung) selama ~80 s, lalu semua jawaban kembali lengkap.
+Tidak ada data yang hilang. RabbitMQ (1 pod, StatefulSet) tidak dibuat ulang selama node-nya mati (HA broker = P3).
+
+Tanpa cluster: `cd aggregator && npm test` (14 tes: urutan lintas unit, cursor, partial, fencing, format checksum, kontrak Audit API terhadap referensi in-memory).
+Adapter MongoDB terhadap server asli (dibandingkan dengan referensi in-memory; database sementara, dihapus setelahnya):
+`docker run -d --rm -p 27018:27017 --name bnpb-mongo-test mongo:7` lalu `MONGO_TEST_URI=mongodb://localhost:27018 npm run test:mongo`
+(sharded: port-forward `svc/mongos` dengan user admin dan tambahkan `MONGO_TEST_SHARDED=1`).
 `scripts/k8s/verify-resources.sh --manifests k8s/overlays/demo`. Jaminan konsistensi per endpoint: `docs/consistency.md`. Kontrak storage untuk Owner B/C: `docs/storage-contract.md`.
 
 ### Variabel konfigurasi tambahan (M2)
