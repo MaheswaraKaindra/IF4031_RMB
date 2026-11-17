@@ -30,14 +30,35 @@ writeFileSync(join(here, 'layout.json'), JSON.stringify(layout, null, 2) + '\n')
 const STORE_RES = `            requests: {memory: 512Mi}
             limits: {memory: 1Gi}`;
 
+// First start: create the local root user on a throw-away standalone mongod (users replicate once the set forms; a
+// secondary's initial sync replaces its copy with the primary's). Then run the real server. --dbpath is explicit because
+// a configsvr would otherwise default to /data/configdb, which is NOT the persistent volume.
+const BOOT = [
+    'set -e', 'DB=/data/db',
+    'if [ ! -f $DB/.bnpb-root-user ]; then',
+    '  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null',
+    `  mongosh --quiet --port 27017 --eval "try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }"`,
+    '  mongod --dbpath $DB --shutdown >/dev/null',
+    '  touch $DB/.bnpb-root-user', 'fi',
+    'exec mongod --dbpath $DB "$@"',
+].join('\n');
+
 function member(m, kind, replSet) {
     const mode = kind === 'config' ? '--configsvr' : '--shardsvr';
     const args = [mode, '--port', '27017', '--replSet', replSet, '--bind_ip_all', '--keyFile', '/keyfile/keyfile',
         '--wiredTigerCacheSizeGB', '0.25', ...(m.arbiter ? [] : ['--oplogSize', '256'])];
     const unit = kind === 'config' ? 'cfg' : replSet;
-    // Arbiters hold no data and get no root user (the entrypoint would create local data on them).
+    // Arbiters hold no data and get no root user. Data members create the local root user themselves (see BOOT): the image
+    // entrypoint's own first-start does it with a temporary standalone mongod but keeps --shardsvr/--configsvr, which
+    // mongod then refuses ("Cannot start a shardsvr as a standalone server", docker-library/mongo#211).
     const env = m.arbiter ? '' : `          envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", ${JSON.stringify(BOOT)}, "--"]
+`;
+    const podSec = m.arbiter ? '' : `      securityContext: {fsGroup: 999}
 `;
     return `---
 apiVersion: v1
@@ -72,7 +93,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "${m.slot}"}
-      initContainers:
+${podSec}      initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
@@ -195,7 +216,7 @@ if (router.getDB('config').collections.countDocuments({ _id: coll }) === 0) {
 
 const appPwd = process.env.MONGO_APP_PASSWORD;
 if (!router.getDB('admin').getUser('aggregator')) {
-    router.getDB('admin').createUser({ user: 'aggregator', pwd: appPwd, roles: [{ role: 'readWrite', db: LAYOUT.database }] });
+    router.getDB('admin').createUser({ user: 'aggregator', pwd: appPwd, roles: [{ role: 'readWrite', db: LAYOUT.database }], writeConcern: { w: 'majority' } });  // user management refuses the w:2 default
     print('created user aggregator');
 }
 
@@ -204,7 +225,7 @@ for (const s of LAYOUT.shards) {
     const host = primaryHost(s);
     const sdb = conn(host).getDB('admin');
     if (!sdb.getUser('probe')) {
-        sdb.createUser({ user: 'probe', pwd: process.env.STORE_PROBE_PASSWORD, roles: [{ role: 'read', db: LAYOUT.database }, { role: 'clusterMonitor', db: 'admin' }] });
+        sdb.createUser({ user: 'probe', pwd: process.env.STORE_PROBE_PASSWORD, roles: [{ role: 'read', db: LAYOUT.database }, { role: 'clusterMonitor', db: 'admin' }], writeConcern: { w: 'majority' } });
         print('created user probe on ' + s.name);
     }
 }

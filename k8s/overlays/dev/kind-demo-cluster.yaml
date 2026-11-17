@@ -1,0 +1,8 @@
+# Rehearsal of the demo layout on a laptop: 3 workers = 3 store slots. Shared kernel => NOT valid M2 evidence.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+  - role: worker

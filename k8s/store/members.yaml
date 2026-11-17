@@ -32,6 +32,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "1"}
+      securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
@@ -49,6 +50,10 @@ spec:
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
@@ -112,6 +117,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "2"}
+      securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
@@ -129,6 +135,10 @@ spec:
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
@@ -192,6 +202,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "3"}
+      securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
@@ -209,6 +220,10 @@ spec:
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
@@ -272,6 +287,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "1"}
+      securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
@@ -289,6 +305,10 @@ spec:
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
@@ -352,6 +372,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "2"}
+      securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
@@ -369,6 +390,10 @@ spec:
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
@@ -510,6 +535,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "2"}
+      securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
@@ -527,6 +553,10 @@ spec:
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
@@ -590,6 +620,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "3"}
+      securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
@@ -607,6 +638,10 @@ spec:
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
@@ -748,6 +783,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "3"}
+      securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
@@ -765,6 +801,10 @@ spec:
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
@@ -828,6 +868,7 @@ spec:
     spec:
       # Pinned to a node slot: data lives on THAT node's local disk and is not rescheduled elsewhere.
       nodeSelector: {bnpb.io/store-slot: "1"}
+      securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
           image: docker.io/library/mongo:7
@@ -845,6 +886,10 @@ spec:
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
             - secretRef: {name: mongo-secret}
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}

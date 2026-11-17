@@ -21,7 +21,7 @@ spec:
             - configMapRef: {name: client-api-config}
             - secretRef: {name: client-api-secret}
           resources:
-            requests: {memory: 128Mi}
+            requests: {memory: 128Mi, cpu: 100m}
             limits: {memory: 256Mi}
           securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1000}
           startupProbe:

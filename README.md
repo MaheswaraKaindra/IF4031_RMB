@@ -323,7 +323,7 @@ Tanpa cluster: `cd aggregator && npm test` (12 tes: urutan lintas unit, cursor, 
 |---|---|---|
 | `STORE_MODE` | `single` | `sharded` dipilih otomatis oleh `deploy.sh demo`; mengubah kunci dokumen (`_id` = `hazard_id`), write concern, dan indeks |
 | `STORE_WRITE_W` | `2` (sharded) | write concern; `1` menukar durabilitas dengan ketersediaan tulis saat satu anggota shard hilang |
-| `STORE_WRITE_TIMEOUT_MS` / `STORE_DEADLINE_MS` | `5000` / `3000` | batas tulis dan batas baca/probe per unit |
+| `STORE_WRITE_TIMEOUT_MS` / `STORE_DEADLINE_MS` / `STORE_SCAN_DEADLINE_MS` | `1500` / `1000` / `8000` | batas tulis, batas baca per unit, dan batas satu pemindaian penuh (analitik/checksum; lewat batas → `partial`) |
 | `AUDIT_TOKEN` | dihasilkan `gen-secrets.sh` | Bearer untuk `/internal/audit/*` dan `/internal/analytics/*`; ganti dengan token dari asisten |
 | `MONGO_APP_PASSWORD`, `STORE_PROBE_PASSWORD`, `MONGO_KEYFILE` | dihasilkan | kredensial user aplikasi, user probe per-anggota, keyfile antar-anggota |
 | `PANTAI_AUTH_TOKEN` | dihasilkan | token Sensor Pantai |

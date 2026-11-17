@@ -69,7 +69,7 @@ if (router.getDB('config').collections.countDocuments({ _id: coll }) === 0) {
 
 const appPwd = process.env.MONGO_APP_PASSWORD;
 if (!router.getDB('admin').getUser('aggregator')) {
-    router.getDB('admin').createUser({ user: 'aggregator', pwd: appPwd, roles: [{ role: 'readWrite', db: LAYOUT.database }] });
+    router.getDB('admin').createUser({ user: 'aggregator', pwd: appPwd, roles: [{ role: 'readWrite', db: LAYOUT.database }], writeConcern: { w: 'majority' } });  // user management refuses the w:2 default
     print('created user aggregator');
 }
 
@@ -78,7 +78,7 @@ for (const s of LAYOUT.shards) {
     const host = primaryHost(s);
     const sdb = conn(host).getDB('admin');
     if (!sdb.getUser('probe')) {
-        sdb.createUser({ user: 'probe', pwd: process.env.STORE_PROBE_PASSWORD, roles: [{ role: 'read', db: LAYOUT.database }, { role: 'clusterMonitor', db: 'admin' }] });
+        sdb.createUser({ user: 'probe', pwd: process.env.STORE_PROBE_PASSWORD, roles: [{ role: 'read', db: LAYOUT.database }, { role: 'clusterMonitor', db: 'admin' }], writeConcern: { w: 'majority' } });
         print('created user probe on ' + s.name);
     }
 }

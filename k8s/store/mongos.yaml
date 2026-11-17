@@ -44,7 +44,7 @@ spec:
             - /keyfile/keyfile
           ports: [{name: mongo, containerPort: 27017}]
           resources:
-            requests: {memory: 128Mi}
+            requests: {memory: 128Mi, cpu: 100m}
             limits: {memory: 256Mi}
           volumeMounts:
             - {name: keyfile, mountPath: /keyfile}
