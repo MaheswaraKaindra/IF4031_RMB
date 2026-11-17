@@ -82,7 +82,10 @@ collect_ids() {  # retries for up to ~2 min: right after a restore the answer ca
   echo "collect_ids: still partial/failing after 2 min" >&2; return 1
 }
 collect_ids_once() {
-  local f=$1 cursor="" body
+  local f=$1 cursor="" body expected
+  # Records only ever get added while this runs, so a complete listing can never be SHORTER than this count.
+  expected=$(audit "/internal/audit/checksum" | jq -r 'if .partial then empty else .count end') || return 1
+  [ -n "$expected" ] || return 1
   : > "$f.raw"
   while :; do
     body=$(audit "/internal/audit/events?limit=1000${cursor:+&cursor=$cursor}") || return 1
@@ -92,6 +95,9 @@ collect_ids_once() {
     [ -z "$cursor" ] && break
   done
   LC_ALL=C sort -u "$f.raw" > "$f"; rm -f "$f.raw"
+  if [ "$(wc -l < "$f" | tr -d ' ')" -lt "$expected" ]; then
+    echo "collect_ids: listing has $(wc -l < "$f" | tr -d ' ') records but the store reported $expected; retrying" >&2; return 1
+  fi
 }
 
 members_json() { tool report | jq -c 'select(has("member"))' | jq -s '.'; }
