@@ -317,9 +317,11 @@ Tester Agent: `scripts/k8s/install-tester-agent.sh` (manifest dan digest sesuai 
 | bukti lokasi/sebaran | `scripts/k8s/p1-report.sh` |
 
 Batas yang diketahui saat satu node MATI (diukur pada rehearsal kind, `docker stop` node): pod stateless pindah setelah ~70 s
-(toleransi 20 s di overlay demo, bukan 300 s bawaan); client-api dan mongos masing-masing 2 replika di node berbeda. Aggregator
-dan auth-service masih 1 replika (aggregator: menunggu leader election P2; auth: refresh token di memori), jadi bila node yang
-mati memuat salah satunya, permintaan gagal cepat (tanpa menggantung) selama ~80 s, lalu semua jawaban kembali lengkap.
+(toleransi 20 s di overlay demo, bukan 300 s bawaan); client-api, auth-service dan mongos masing-masing 2 replika di node
+berbeda (auth-service memakai `sessionAffinity: ClientIP` karena refresh token disimpan per replika: klien yang replikanya mati
+cukup meminta `/token` lagi, sama seperti setelah restart; afinitas berlaku per node, jadi klien memakai satu alamat node).
+Aggregator masih 1 replika (menunggu leader election P2, Owner B), jadi bila node yang mati memuatnya, permintaan gagal cepat
+(tanpa menggantung) selama ~80 s, lalu semua jawaban kembali lengkap.
 Tidak ada data yang hilang. RabbitMQ (1 pod, StatefulSet) tidak dibuat ulang selama node-nya mati (HA broker = P3).
 
 Tanpa cluster: `cd aggregator && npm test` (14 tes: urutan lintas unit, cursor, partial, fencing, format checksum, kontrak Audit API terhadap referensi in-memory).

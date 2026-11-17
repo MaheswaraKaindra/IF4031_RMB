@@ -47,4 +47,7 @@ metadata:
   labels: {app.kubernetes.io/name: auth-service, role: api}
 spec:
   selector: {app.kubernetes.io/name: auth-service}
+  # Refresh tokens and the failed-attempt throttle live in each replica's memory: a client must keep reaching the replica
+  # that issued its refresh token. Default affinity timeout (3h) outlasts REFRESH_TOKEN_TTL_SECONDS (1h).
+  sessionAffinity: ClientIP
   ports: [{name: http, port: 8090, targetPort: http}]

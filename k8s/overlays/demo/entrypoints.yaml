@@ -14,6 +14,7 @@ kind: Service
 metadata: {name: auth-service-external, labels: {app.kubernetes.io/name: auth-service, role: api}}
 spec:
   type: NodePort
+  sessionAffinity: ClientIP   # see k8s/base/auth-service: per-replica refresh tokens (affinity is per node: use one node address)
   selector: {app.kubernetes.io/name: auth-service}
   ports: [{name: http, port: 8090, targetPort: http, nodePort: 30090}]
 ---

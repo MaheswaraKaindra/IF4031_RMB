@@ -51,6 +51,20 @@ patches:
             topologySpreadConstraints:
               - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeTaintsPolicy: Honor,
                  labelSelector: {matchLabels: {app.kubernetes.io/name: client-api}}}
+  # auth-service: 2 replicas on different nodes so token issuance survives a node loss. Both Services use ClientIP
+  # affinity (refresh tokens are per replica); a client whose replica dies re-authenticates with /token, as after a restart.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: auth-service
+      spec:
+        replicas: 2
+        template:
+          spec:
+            topologySpreadConstraints:
+              - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeTaintsPolicy: Honor,
+                 labelSelector: {matchLabels: {app.kubernetes.io/name: auth-service}}}
   # Two query routers are only redundant on two different nodes.
   - patch: |-
       apiVersion: apps/v1
