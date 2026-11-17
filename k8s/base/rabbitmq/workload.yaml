@@ -14,6 +14,8 @@ spec:
     metadata:
       labels: {app.kubernetes.io/name: rabbitmq, role: broker}
     spec:
+      # A fresh volume is root-owned: without this the first start cannot write .erlang.cookie and restarts once.
+      securityContext: {fsGroup: 101}   # rabbitmq user in the -alpine image is uid 100 / gid 101
       containers:
         - name: rabbitmq
           image: docker.io/library/rabbitmq:4-management-alpine
