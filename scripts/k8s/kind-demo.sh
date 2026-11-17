@@ -21,7 +21,8 @@ for s in "${SERVICES[@]}"; do
   docker build -q -t "$REGISTRY/bnpb/$s:demo" "$ROOT/$s" >/dev/null
   load "$REGISTRY/bnpb/$s:demo"
 done
-for img in $(kubectl kustomize "$ROOT/k8s/overlays/demo" | grep -oE 'image: [^ ]+' | cut -d' ' -f2 | grep -v -e REGISTRY_PLACEHOLDER -e '@sha256:' | sort -u   # digest-pinned images are pulled by the kubelet (a loaded copy breaks the digest lookup)); do
+# Digest-pinned images are skipped: the kubelet pulls them itself (a loaded copy breaks the digest lookup).
+for img in $(kubectl kustomize "$ROOT/k8s/overlays/demo" | grep -oE 'image: [^ ]+' | cut -d' ' -f2 | grep -v -e REGISTRY_PLACEHOLDER -e '@sha256:' | sort -u); do
   docker image inspect "$img" >/dev/null 2>&1 || docker pull "$img"
   load "$img"
 done
