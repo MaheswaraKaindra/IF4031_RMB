@@ -16,7 +16,9 @@ DOWN_SECONDS=${DOWN_SECONDS:-45}
 MONITOR_SECONDS=${MONITOR_SECONDS:-150}
 members=$(members_of_slot "$SLOT")
 [ -n "$members" ] || { echo "no members for slot $SLOT" >&2; exit 1; }
-SNAP=$(mktemp -d); trap 'cleanup_pf; rm -rf "$SNAP"' EXIT
+SNAP=$(mktemp -d); WIPED=0
+# If the run dies between the wipe and the restore, never leave the slot's members stopped.
+trap 'cleanup_pf; rm -rf "$SNAP"; [ "$WIPED" = 1 ] && { echo "restoring members after an aborted run" >&2; for m in $members; do kubectl -n "$NS" scale statefulset "$m" --replicas=1 >/dev/null; done; }' EXIT
 start_forward; start_client_forward
 
 echo ">>> precondition: redundancy intact (needed to survive the NEXT loss, criterion 6)"
@@ -39,6 +41,7 @@ probe_once() {
     client_ok=$((client_ok + 1)); [ "$part" = partial ] && echo "partial  client-api /events (flagged)"
     jq -en --arg t "$t" '($t|tonumber) > 2' >/dev/null && { slow=$((slow + 1)); echo "SLOW     client-api /events ${t}s"; }
   else bad=$((bad + 1)); echo "BAD      client-api /events -> $code (${t}s)"; fi
+  return 0   # the last list above may legitimately be "false"; under set -e that would abort the whole run
 }
 
 if [ "$MANUAL" = "--manual" ]; then
@@ -46,10 +49,10 @@ if [ "$MANUAL" = "--manual" ]; then
   start=$(date +%s); while [ $(( $(date +%s) - start )) -lt "$MONITOR_SECONDS" ]; do probe_once; sleep 3; done
 else
   echo ">>> simulating permanent loss of slot $SLOT: $(echo $members | tr '\n' ' ')"
-  wipe_members "$SNAP" $members
+  WIPED=1; wipe_members "$SNAP" $members
   echo ">>> node gone; monitoring for ${DOWN_SECONDS}s before the replacement (empty disk) joins"
   start=$(date +%s); while [ $(( $(date +%s) - start )) -lt "$DOWN_SECONDS" ]; do probe_once; sleep 3; done
-  restore_members "$SNAP" 1 $members
+  restore_members "$SNAP" 1 $members; WIPED=0
   echo ">>> replacement joined with empty disks; monitoring until MONITOR_SECONDS=${MONITOR_SECONDS}s"
   start=$(date +%s); while [ $(( $(date +%s) - start )) -lt "$MONITOR_SECONDS" ]; do probe_once; sleep 3; done
 fi

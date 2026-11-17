@@ -76,12 +76,17 @@ snapshot() {
 # collect_ids <file>: sorted unique "source|source_ref_id" of every stored record, via the Audit API.
 # The PASS criterion for "no HazardEvent lost" is CONTAINMENT (before is a subset of after): the mocks and pollers keep
 # adding events during the test, so checksum equality would fail on healthy runs.
-collect_ids() {
+collect_ids() {  # retries for up to ~2 min: right after a restore the answer can stay partial until the election/probe settle
+  local f=$1 n
+  for n in $(seq 1 24); do collect_ids_once "$f" && return 0; sleep 5; done
+  echo "collect_ids: still partial/failing after 2 min" >&2; return 1
+}
+collect_ids_once() {
   local f=$1 cursor="" body
   : > "$f.raw"
   while :; do
-    body=$(audit "/internal/audit/events?limit=1000${cursor:+&cursor=$cursor}") || { echo "collect_ids: audit call failed" >&2; return 1; }
-    [ "$(jq -r '.partial' <<<"$body")" = false ] || { echo "collect_ids: answer is partial; wait for recovery" >&2; return 1; }
+    body=$(audit "/internal/audit/events?limit=1000${cursor:+&cursor=$cursor}") || return 1
+    [ "$(jq -r '.partial' <<<"$body")" = false ] || return 1
     jq -r '.items[] | "\(.source)|\(.source_ref_id)"' <<<"$body" >> "$f.raw"
     cursor=$(jq -r '.next_cursor // empty' <<<"$body")
     [ -z "$cursor" ] && break

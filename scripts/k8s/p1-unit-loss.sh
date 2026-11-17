@@ -23,7 +23,10 @@ partial_audit=0; partial_checksum=0; partial_analytics=0; partial_client=0; bad=
 start=$(date +%s)
 while [ $(( $(date +%s) - start )) -lt "$DOWN_SECONDS" ]; do
   if body=$(audit "/internal/audit/events?limit=1000"); then
-    if [ "$(jq -r '.partial' <<<"$body")" = true ] && jq -e --arg u "shard-$SHARD" '.unavailable_units | index($u)' <<<"$body" >/dev/null; then partial_audit=$((partial_audit + 1)); else complete_wrong=$((complete_wrong + 1)); fi
+    if [ "$(jq -r '.partial' <<<"$body")" = true ] && jq -e --arg u "shard-$SHARD" '.unavailable_units | index($u)' <<<"$body" >/dev/null; then partial_audit=$((partial_audit + 1))
+    # Until the first partial answer the pods may still be terminating and legitimately serving (detection takes a few seconds):
+    # a complete answer is only wrong AFTER the unit was already reported unreachable.
+    elif [ "$partial_audit" -gt 0 ]; then complete_wrong=$((complete_wrong + 1)); fi
   else bad=$((bad + 1)); echo "BAD audit events"; fi
   if body=$(audit "/internal/audit/checksum"); then [ "$(jq -r '.partial' <<<"$body")" = true ] && partial_checksum=$((partial_checksum + 1)); else bad=$((bad + 1)); echo "BAD checksum"; fi
   if body=$(audit "/internal/analytics/summary"); then [ "$(jq -r '.partial' <<<"$body")" = true ] && partial_analytics=$((partial_analytics + 1)); else bad=$((bad + 1)); echo "BAD analytics"; fi
