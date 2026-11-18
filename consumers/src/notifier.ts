@@ -3,6 +3,8 @@ import { runConsumer } from './runtime.js';
 runConsumer({
     service: 'consumer-notifier',
     queue: 'q_field_notifier',
+    criticalQueue: 'q_critical_alerts',
+    criticalRoutingKeys: ['critical.field_report', 'critical.coastal'],
     handle: (event, log) => {
         if (event.severity === 'SIAGA' || event.severity === 'AWAS') {
             log.warn({ hazard_id: event.hazard_id, area_name: event.area_name, severity: event.severity }, 'SENDING EMERGENCY ALERT');

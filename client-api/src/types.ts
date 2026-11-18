@@ -1,8 +1,10 @@
+export type SourceName = 'BMKG' | 'PVMBG' | 'SATELIT' | 'SENSOR_PANTAI' | 'FIELD_REPORT';
+
 export interface HazardEvent {
     hazard_id: string;
-    source: 'BMKG' | 'PVMBG';
+    source: SourceName;
     source_ref_id: string;
-    hazard_type: 'SEISMIC' | 'VOLCANIC';
+    hazard_type: 'SEISMIC' | 'VOLCANIC' | 'WILDFIRE' | 'COASTAL';
     severity: 'NORMAL' | 'WASPADA' | 'SIAGA' | 'AWAS';
     area_name: string;
     latitude: number;
@@ -11,8 +13,6 @@ export interface HazardEvent {
     ingested_at: string;
     attributes: Record<string, unknown>;
 }
-
-export type SourceName = 'BMKG' | 'PVMBG';
 
 export type Scope = 'events:read:summary' | 'events:read:raw';
 
