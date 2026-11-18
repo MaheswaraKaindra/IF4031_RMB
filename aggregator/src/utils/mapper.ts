@@ -1,11 +1,12 @@
 import { hazardIdFor } from "../storage/identity.js";
+import type { HazardType, Severity, Source } from "../storage/types.js";
 
 export interface HazardEvent {
     hazard_id: string;
-    source: 'BMKG' | 'PVMBG';
+    source: Source;
     source_ref_id: string;
-    hazard_type: 'SEISMIC' | 'VOLCANIC';
-    severity: 'NORMAL' | 'WASPADA' | 'SIAGA' | 'AWAS';
+    hazard_type: HazardType;
+    severity: Severity;
     area_name: string;
     latitude: number;
     longitude: number;

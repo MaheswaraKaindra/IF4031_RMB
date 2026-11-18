@@ -1,11 +1,11 @@
 // Storage contract shared by Owners A/B/C. Everything above the database goes through ICanonicalRepository.
 // Nothing here knows whether the backing store is MongoDB, a fake, or something else.
 
-export type Source = 'BMKG' | 'PVMBG' | 'SATELIT' | 'SENSOR_PANTAI';
+export type Source = 'BMKG' | 'PVMBG' | 'SATELIT' | 'SENSOR_PANTAI' | 'FIELD_REPORT';
 export type HazardType = 'SEISMIC' | 'VOLCANIC' | 'WILDFIRE' | 'COASTAL';
 export type Severity = 'NORMAL' | 'WASPADA' | 'SIAGA' | 'AWAS';
 
-export const SOURCES: readonly Source[] = ['BMKG', 'PVMBG', 'SATELIT', 'SENSOR_PANTAI'];
+export const SOURCES: readonly Source[] = ['BMKG', 'PVMBG', 'SATELIT', 'SENSOR_PANTAI', 'FIELD_REPORT'];
 export const HAZARD_TYPES: readonly HazardType[] = ['SEISMIC', 'VOLCANIC', 'WILDFIRE', 'COASTAL'];
 
 export interface HazardRecord {

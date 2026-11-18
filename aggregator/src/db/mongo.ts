@@ -68,6 +68,11 @@ export function getMongoClient(): MongoClient {
     return client;
 }
 
+export function getMongoDb(): Db {
+    if (!db) throw new Error('MongoDB not connected');
+    return db;
+}
+
 export async function pingMongo(timeoutMs: number): Promise<boolean> {
     if (!db) return false;
     const timeout = new Promise<false>((resolve) => setTimeout(resolve, timeoutMs, false).unref());

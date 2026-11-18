@@ -4,7 +4,11 @@ import pino, { type Logger } from 'pino';
 
 export const logger = pino({
     level: process.env.LOG_LEVEL || 'info',
-    base: { service: 'aggregator' },
+    base: {
+        service: 'aggregator',
+        ...(process.env.POD_NAME || process.env.HOSTNAME ? { pod: process.env.POD_NAME || process.env.HOSTNAME } : {}),
+        ...(process.env.NODE_NAME ? { node: process.env.NODE_NAME } : {}),
+    },
     timestamp: pino.stdTimeFunctions.isoTime,
     formatters: {
         level: (label) => ({ level: label }),
@@ -19,7 +23,10 @@ export const errorMessage = (error: unknown) => (error instanceof Error ? error.
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
     const incoming = req.header(CORRELATION_HEADER);
     const id = incoming !== undefined && VALID_ID.test(incoming) ? incoming : randomUUID();
-    const log = logger.child({ correlation_id: id });
+    const log = logger.child({
+        correlation_id: id,
+        ...(res.locals.traceId ? { trace_id: res.locals.traceId, span_id: res.locals.spanId } : {}),
+    });
     const start = performance.now();
 
     res.locals.log = log;
