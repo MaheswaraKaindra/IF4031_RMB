@@ -11,6 +11,9 @@ spec:
   template:
     metadata:
       labels: {app.kubernetes.io/name: mock-pvmbg, role: mock}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
     spec:
       containers:
         - name: mock-pvmbg
