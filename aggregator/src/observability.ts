@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
-const HIST_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10] as const;
+const HIST_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120] as const;
 
 interface LabelledKey {
     name: string;
@@ -108,6 +108,20 @@ metrics.register('aggregator_poll_duration_seconds', 'histogram', 'Source poll d
 metrics.register('aggregator_inbox_messages_total', 'counter', 'Raw inbox state transitions');
 metrics.register('aggregator_inbox_unprocessed', 'gauge', 'Current unprocessed inbox count by status');
 metrics.register('aggregator_outbox_pending', 'gauge', 'Pending field-report outbox entries');
+metrics.register('satellite_ingest_to_store_seconds', 'histogram', 'Seconds from a satellite frame being stored in the feed log to its HazardEvent being stored');
+metrics.register('satellite_processing_backlog', 'gauge', 'Frames in the feed log not yet committed by the processor');
+metrics.register('satellite_committed_offset', 'gauge', 'Highest feed offset whose effects are durable');
+metrics.register('satellite_log_tail_offset', 'gauge', 'Highest feed offset durably stored in the feed log');
+metrics.register('satellite_active_fires', 'gauge', 'Fires currently tracked in processor memory');
+metrics.register('satellite_singleton_detections', 'gauge', 'Detections not part of any fire');
+metrics.register('satellite_late_detections', 'gauge', 'Detections arriving beyond the allowed lateness');
+metrics.register('satellite_watermark_seconds', 'gauge', 'Event-time watermark in epoch seconds');
+metrics.register('satellite_source_latest_offset', 'gauge', 'Newest offset the feed reports in /v1/session');
+metrics.register('satellite_source_offset_lag', 'gauge', 'Feed offsets not yet stored in the feed log (source offset minus log tail)');
+metrics.register('satellite_virtual_now_seconds', 'gauge', 'Feed virtual clock in epoch seconds');
+metrics.register('satellite_feed_speed', 'gauge', 'Playback speed of the feed session');
+metrics.register('satellite_session_poll_failures_total', 'counter', 'Failed /v1/session polls');
+metrics.register('satellite_batch_retries_total', 'counter', 'Processor batches retried after a transient failure');
 metrics.register('aggregator_storage_unavailable_total', 'counter', 'Storage unavailable outcomes');
 
 // ---- Lightweight W3C TraceContext + OTLP/HTTP JSON Exporter --------------------------------------
