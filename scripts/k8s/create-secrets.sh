@@ -44,6 +44,8 @@ MONGO_URI="mongodb://$MONGO_USER:$MONGO_PASSWORD@mongo:27017/bnpb_canonical_stor
 
 STORE_MODE=${STORE_MODE:-single}
 AUDIT_TOKEN=$(raw AUDIT_TOKEN)   # optional in single mode; audit endpoints answer 503 until it is set
+SATELLITE_GROUP_TOKEN=$(raw SATELLITE_GROUP_TOKEN)   # optional: the satellite pipeline stays off until it is set
+[[ "$SATELLITE_GROUP_TOKEN" == ganti-dengan-* ]] && SATELLITE_GROUP_TOKEN=
 SHARDED_ENV=()
 if [ "$STORE_MODE" = sharded ]; then
   MONGO_APP_PASSWORD=$(need MONGO_APP_PASSWORD)
@@ -80,7 +82,7 @@ apply_secret rabbitmq-secret \
 apply_secret aggregator-secret \
   "X_BMKG_KEY=$X_BMKG_KEY" "PVMBG_TOKEN=$PVMBG_TOKEN" \
   "MONGO_URI=$MONGO_URI" "RABBITMQ_URL=$RABBITMQ_URL" \
-  ${AUDIT_TOKEN:+"AUDIT_TOKEN=$AUDIT_TOKEN"} ${SHARDED_ENV[@]+"${SHARDED_ENV[@]}"}
+  ${AUDIT_TOKEN:+"AUDIT_TOKEN=$AUDIT_TOKEN"} ${SATELLITE_GROUP_TOKEN:+"SATELLITE_GROUP_TOKEN=$SATELLITE_GROUP_TOKEN"} ${SHARDED_ENV[@]+"${SHARDED_ENV[@]}"}
 apply_secret client-api-secret "JWT_PUBLIC_KEY_B64=$JWT_PUBLIC_KEY_B64"
 apply_secret auth-service-secret \
   "JWT_PRIVATE_KEY_B64=$JWT_PRIVATE_KEY_B64" \
