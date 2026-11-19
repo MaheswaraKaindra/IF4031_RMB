@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "hide": 2
+      }
+    ]
+  },
+  "title": "BNPB satellite pipeline (P4)",
+  "uid": "bnpb-satellite",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Lag behind the feed (frames)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max(satellite_source_offset_lag)",
+          "legendFormat": "source offset - stored in feed log",
+          "refId": "A"
+        },
+        {
+          "expr": "max(satellite_processing_backlog)",
+          "legendFormat": "stored - committed by the processor",
+          "refId": "B"
+        }
+      ],
+      "description": "How far BNPB trails the feed. Both rise during a burst and must return to ~0 within 60 s after it ends."
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Event-time lag (seconds)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max(satellite_virtual_now_seconds) - max(satellite_watermark_seconds)",
+          "legendFormat": "feed clock - watermark",
+          "refId": "A"
+        }
+      ],
+      "description": "Feed virtual clock minus the processor's event-time watermark."
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Ingest to HazardEvent stored, latency",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(satellite_ingest_to_store_seconds_bucket[1m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(satellite_ingest_to_store_seconds_bucket[1m])))",
+          "legendFormat": "p50",
+          "refId": "B"
+        }
+      ],
+      "description": "From a frame being stored in the feed log to its HazardEvent being stored."
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Processing throughput (frames/s)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max(deriv(satellite_committed_offset[1m]))",
+          "legendFormat": "committed",
+          "refId": "A"
+        },
+        {
+          "expr": "max(deriv(satellite_log_tail_offset[1m]))",
+          "legendFormat": "received",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Fires, singletons and late detections",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max(satellite_active_fires)",
+          "legendFormat": "fires tracked",
+          "refId": "A"
+        },
+        {
+          "expr": "max(satellite_singleton_detections)",
+          "legendFormat": "single detections (not fires)",
+          "refId": "B"
+        },
+        {
+          "expr": "max(satellite_late_detections)",
+          "legendFormat": "beyond allowed lateness (cumulative)",
+          "refId": "C"
+        },
+        {
+          "expr": "max(satellite_ignored_retracted_detections)",
+          "legendFormat": "re-sent after retract (ignored)",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Writes to canonical store (per s)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (op) (rate(satellite_fires_written_total[1m]))",
+          "legendFormat": "{{op}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "SATELIT leadership",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max by (pod) (aggregator_is_leader{source=\"SATELIT\"})",
+          "legendFormat": "is leader",
+          "refId": "A"
+        },
+        {
+          "expr": "max(aggregator_leader_epoch{source=\"SATELIT\"})",
+          "legendFormat": "epoch",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Processor batch retries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(satellite_batch_retries_total[5m]))",
+          "legendFormat": "retries / 5m",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
