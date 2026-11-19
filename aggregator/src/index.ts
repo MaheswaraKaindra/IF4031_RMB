@@ -38,6 +38,7 @@ import {
     type SchemaRulesConfig,
 } from './p3/schemaValidator.js';
 import { computeBackoffWithJitter, MongoRawInbox, type RawInboxItem } from './p3/rawInbox.js';
+import { SatelliteService, satelliteEnv } from './satellite/service.js';
 import { MongoFieldReportOutbox, relayPendingOutboxBatch, type FieldReportOutboxRecord } from './p3/fieldReports.js';
 
 const PORT = Number(process.env.AGGREGATOR_PORT || 3000);
@@ -979,6 +980,25 @@ const server = app.listen(PORT, async () => {
     bmkgLeader.start();
     pvmbgLeader.start();
 
+    const satelliteCfg = satelliteEnv(process.env);
+    const satelliteService = satelliteCfg
+        ? new SatelliteService(satelliteCfg, {
+              repo,
+              fenceStore,
+              checkpoints: checkpointStore,
+              getDb: getMongoDb,
+              leaseProvider,
+              identity: POD_IDENTITY,
+              leaseDurationMs: LEASE_DURATION_MS,
+              renewDeadlineMs: LEASE_RENEW_DEADLINE_MS,
+              retryPeriodMs: LEASE_RETRY_PERIOD_MS,
+              metrics,
+              logger,
+          })
+        : undefined;
+    if (satelliteService) satelliteService.start();
+    else logger.warn('SATELLITE_GROUP_TOKEN not set, satellite pipeline disabled');
+
     const timers = [
         setInterval(pollBmkg, POLLING_INTERVAL),
         setInterval(pollPvmbg, POLLING_INTERVAL),
@@ -991,7 +1011,7 @@ const server = app.listen(PORT, async () => {
             logger.info({ signal, pod: POD_IDENTITY }, 'aggregator draining and shutting down');
             shuttingDown = true;
             timers.forEach(clearInterval);
-            await Promise.all([bmkgLeader?.stop(), pvmbgLeader?.stop()]);
+            await Promise.all([bmkgLeader?.stop(), pvmbgLeader?.stop(), satelliteService?.stop()]);
             storageServer.close();
             server.close(async () => {
                 await rabbitConnection?.close().catch(() => undefined);
