@@ -155,6 +155,9 @@ const SERVICE_NAME = process.env.SERVICE_NAME || 'aggregator';
 const OTLP_ENDPOINT = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '').replace(/\/$/, '');
 const spanBuffer: PendingSpan[] = [];
 let flushScheduled = false;
+let exportInFlight = false;
+let exportPausedUntilMs = 0;
+const EXPORT_PAUSE_MS = 30_000;
 
 function toAttrs(attrs: Record<string, string | number | undefined>) {
     const out: Array<{ key: string; value: { stringValue?: string; intValue?: string } }> = [];
@@ -176,6 +179,9 @@ async function flushSpans(): Promise<void> {
         return;
     }
     const batch = spanBuffer.splice(0, 200);
+    // One export at a time, and a pause after a failure: a collector that cannot be resolved or reached must not keep
+    // lookups and sockets busy (a failing DNS lookup holds one of the 4 libuv threads for ~1 s, starving every other lookup).
+    if (exportInFlight || Date.now() < exportPausedUntilMs) return;
     const payload = {
         resourceSpans: [
             {
@@ -206,6 +212,7 @@ async function flushSpans(): Promise<void> {
         ],
     };
 
+    exportInFlight = true;
     try {
         await fetch(`${OTLP_ENDPOINT}/v1/traces`, {
             method: 'POST',
@@ -215,6 +222,9 @@ async function flushSpans(): Promise<void> {
         });
     } catch {
         // Telemetry must never degrade or fail application traffic
+        exportPausedUntilMs = Date.now() + EXPORT_PAUSE_MS;
+    } finally {
+        exportInFlight = false;
     }
 }
 
