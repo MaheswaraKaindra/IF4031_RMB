@@ -21,7 +21,8 @@ export interface SourceStatus {
     last_failure_at: string | null;
 }
 
-export type SourceStatuses = Record<SourceName, SourceStatus>;
+export type PolledSourceName = 'BMKG' | 'PVMBG';
+export type SourceStatuses = Record<PolledSourceName, SourceStatus>;
 
 export interface SourceFreshness {
     last_success_at: string | null;
