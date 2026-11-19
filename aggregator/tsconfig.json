@@ -22,5 +22,5 @@
     "moduleDetection": "force",
     "skipLibCheck": true,
   },
-  "exclude": ["src/**/*.test.ts", "node_modules", "dist"]
+  "exclude": ["src/**/*.test.ts", "src/**/testSupport.ts", "node_modules", "dist"]
 }
