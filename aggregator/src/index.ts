@@ -268,7 +268,7 @@ async function applyLateWarnings(
 
             const newSeverity = recomputeSeverityFromWarning(w);
             if (!handle.isStillValid() || !(await fenceStore.assertEpoch('BMKG', handle.epoch))) return false;
-            if (!(await attachTsunamiWarning(stored.hazard_id, newSeverity, w))) continue;
+            if (!(await attachTsunamiWarning(stored.hazard_id, newSeverity, w, handle.epoch))) continue;
 
             log.info(
                 { hazard_id: stored.hazard_id, old_severity: stored.severity, new_severity: newSeverity, leader_epoch: handle.epoch },
@@ -371,6 +371,7 @@ async function pollBmkg(): Promise<void> {
             'X-BMKG-Key': X_BMKG_KEY!,
             [CORRELATION_HEADER]: correlationId,
             traceparent: span.traceparent,
+            'x-leader-epoch': String(handle.epoch),
         };
 
         let eventsBuf: Buffer;
@@ -512,6 +513,7 @@ async function pollPvmbg(): Promise<void> {
                         Authorization: `Bearer ${PVMBG_TOKEN!}`,
                         [CORRELATION_HEADER]: correlationId,
                         traceparent: span.traceparent,
+                        'x-leader-epoch': String(handle.epoch),
                     },
                     5000,
                     handle.signal
@@ -898,7 +900,7 @@ app.post('/internal/ops/unprocessed/replay', express.json(), async (req, res) =>
     const maxPerSec = typeof body['max_per_sec'] === 'number' && body['max_per_sec'] > 0 ? body['max_per_sec'] : REPLAY_MAX_PER_SEC;
 
     try {
-        const stats = await rawInbox.replay({ source, reason }, processInboxRecord, maxPerSec);
+        const stats = await rawInbox.replay({ source, reason }, processInboxRecord, maxPerSec, INBOX_MAX_ATTEMPTS);
         res.json(stats);
     } catch (err) {
         getLog(res).error({ error: errorMessage(err) }, 'Replay failed');

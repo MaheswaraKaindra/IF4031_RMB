@@ -68,7 +68,7 @@ export interface RawInboxStore {
     markFailed(messageId: string, opts: { claimToken?: string | undefined; retryable: boolean; reason: string; maxAttempts: number; backoffMs?: number | undefined }): Promise<void>;
     hasBlockingFailure(source: string, sourceRefId: string, beforeSeq?: number): Promise<boolean>;
     list(q: { source?: string | undefined; limit: number; cursor?: string | undefined }): Promise<{ items: UnprocessedAuditItem[]; next_cursor: string | null }>;
-    replay(filter: RawInboxFilter, handler: ReplayHandler, maxPerSecond: number): Promise<ReplayStats>;
+    replay(filter: RawInboxFilter, handler: ReplayHandler, maxPerSecond: number, maxAttempts?: number | undefined): Promise<ReplayStats>;
     countsByStatus(): Promise<Record<InboxStatus, number>>;
 }
 
@@ -322,13 +322,13 @@ export class MongoRawInbox implements RawInboxStore {
         };
     }
 
-    async replay(filter: RawInboxFilter, handler: ReplayHandler, maxPerSecond: number): Promise<ReplayStats> {
+    async replay(filter: RawInboxFilter, handler: ReplayHandler, maxPerSecond: number, maxAttempts = 5): Promise<ReplayStats> {
         const q: Record<string, unknown> = { status: { $in: ['parked', 'retrying'] } };
         if (filter.source) q['source'] = filter.source;
         if (filter.reason) q['reason'] = { $regex: filter.reason };
 
         const docs = await this.coll().find(q).sort({ received_at: 1, created_seq: 1 }).toArray();
-        return executeOrderedReplay(docs.map(fromMongoDoc), this, handler, maxPerSecond);
+        return executeOrderedReplay(docs.map(fromMongoDoc), this, handler, maxPerSecond, maxAttempts);
     }
 
     async countsByStatus(): Promise<Record<InboxStatus, number>> {
@@ -467,13 +467,13 @@ export class InMemoryRawInbox implements RawInboxStore {
         };
     }
 
-    async replay(filter: RawInboxFilter, handler: ReplayHandler, maxPerSecond: number): Promise<ReplayStats> {
+    async replay(filter: RawInboxFilter, handler: ReplayHandler, maxPerSecond: number, maxAttempts = 5): Promise<ReplayStats> {
         const items = [...this.records.values()]
             .filter((r) => (r.status === 'parked' || r.status === 'retrying'))
             .filter((r) => !filter.source || r.source === filter.source)
             .filter((r) => !filter.reason || (r.reason ?? '').includes(filter.reason))
             .sort((a, b) => a.received_at.localeCompare(b.received_at) || a.created_seq - b.created_seq);
-        return executeOrderedReplay(items, this, handler, maxPerSecond);
+        return executeOrderedReplay(items, this, handler, maxPerSecond, maxAttempts);
     }
 
     async countsByStatus(): Promise<Record<InboxStatus, number>> {
@@ -491,7 +491,8 @@ async function executeOrderedReplay(
     items: RawInboxItem[],
     store: RawInboxStore,
     handler: ReplayHandler,
-    maxPerSecond: number
+    maxPerSecond: number,
+    maxAttempts: number
 ): Promise<ReplayStats> {
     const blockedKeys = new Set<string>();
     const stats: ReplayStats = { scanned: items.length, recovered: 0, blocked_by_key: 0, still_failed: 0 };
@@ -517,7 +518,7 @@ async function executeOrderedReplay(
             await store.markFailed(item.message_id, {
                 retryable: result.retryable,
                 reason: result.reason,
-                maxAttempts: 5,
+                maxAttempts,
             });
             stats.still_failed += 1;
             if (key) blockedKeys.add(key);

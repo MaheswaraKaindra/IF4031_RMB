@@ -4,11 +4,12 @@ import pino from 'pino';
 import { InMemoryCheckpointStore } from './coordination/checkpoints.js';
 import { fencedIngest, InMemorySourceFenceStore } from './coordination/fencing.js';
 import { SourceLeaderManager } from './coordination/leaderLoop.js';
-import { InMemoryLeaseProvider } from './coordination/lease.js';
+import { InMemoryLeaseProvider, toK8sMicroTime } from './coordination/lease.js';
+import { metrics } from './observability.js';
 import { parseBoundedRawJson } from './p3/boundedJson.js';
 import { InMemoryFieldReportOutbox, relayPendingOutboxBatch } from './p3/fieldReports.js';
 import { InMemoryRawInbox } from './p3/rawInbox.js';
-import { defaultSchemaRules, validateAndMapPvmbgRecord } from './p3/schemaValidator.js';
+import { defaultSchemaRules, validateAndMapPvmbgRecord, validateFieldReport } from './p3/schemaValidator.js';
 import { hazardIdFor } from './storage/identity.js';
 import { InMemoryRepository } from './storage/memory.js';
 import type { HazardRecord } from './storage/types.js';
@@ -301,4 +302,27 @@ test('P3: durable POST /field-reports 202 survives crash before/after broker pub
     assert.equal(publishedCount, 1);
     assert.equal(await outbox.pendingCount(), 0);
     assert.equal((await repo.checksum()).count, 1);
+});
+
+test('K8s MicroTime formatting, field-report validation, and Prometheus metrics render cleanly', () => {
+    assert.match(toK8sMicroTime(Date.UTC(2026, 10, 18, 12, 0, 0, 123)), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/);
+
+    assert.equal(validateFieldReport({ report_id: '', hazard_type: 'COASTAL' }).ok, false);
+    assert.equal(
+        validateFieldReport({
+            report_id: 'FR-VALID',
+            hazard_type: 'WILDFIRE',
+            severity: 'SIAGA',
+            area_name: 'Riau',
+            latitude: 0.5,
+            longitude: 101.4,
+            occurred_at: '2026-11-18T12:00:00Z',
+        }).ok,
+        true
+    );
+
+    metrics.inc('http_requests_total', { service: 'aggregator', method: 'GET', route: '/health', status: '200' });
+    const text = metrics.render();
+    assert.ok(text.includes('# TYPE http_requests_total counter'));
+    assert.ok(text.includes('http_requests_total{method="GET",route="/health",service="aggregator",status="200"}'));
 });
