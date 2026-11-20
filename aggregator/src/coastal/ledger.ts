@@ -233,7 +233,7 @@ export class MongoDeliveryLedger implements IDeliveryLedger {
                     {
                         $set: {
                             claim_token: token,
-                            claim_expires_at: { $dateAdd: { startDate: '$$NOW', unit: 'millisecond', amount: visibilityMs } },
+                            claim_expires_at: { $add: ['$$NOW', visibilityMs] },
                             attempts: { $add: ['$attempts', 1] },
                         },
                     },
@@ -252,7 +252,7 @@ export class MongoDeliveryLedger implements IDeliveryLedger {
                 $set: {
                     state: { $cond: [{ $eq: ['$state', 'pending'] }, 'published', '$state'] },
                     published_at: { $ifNull: ['$published_at', '$$NOW'] },
-                    next_attempt_at: { $dateAdd: { startDate: '$$NOW', unit: 'millisecond', amount: redeliverAfterMs } },
+                    next_attempt_at: { $add: ['$$NOW', redeliverAfterMs] },
                 },
             },
             { $unset: ['claim_token', 'claim_expires_at'] },
@@ -261,7 +261,7 @@ export class MongoDeliveryLedger implements IDeliveryLedger {
 
     async release(id: string, claimToken: string, retryInMs: number): Promise<void> {
         await this.coll().updateOne({ _id: id, claim_token: claimToken }, [
-            { $set: { next_attempt_at: { $dateAdd: { startDate: '$$NOW', unit: 'millisecond', amount: retryInMs } } } },
+            { $set: { next_attempt_at: { $add: ['$$NOW', retryInMs] } } },
             { $unset: ['claim_token', 'claim_expires_at'] },
         ]);
     }
