@@ -18,7 +18,7 @@ export interface HazardRecord {
     latitude: number;
     longitude: number;
     occurred_at: string; // ISO 8601 UTC
-    ingested_at: string; // ISO 8601 UTC, set once when BNPB first stored the record
+    ingested_at: string; // ISO 8601 UTC, set once when BNPB first stored the record (the Mongo repository stamps it with the store clock)
     attributes: Record<string, unknown>;
 }
 

@@ -24,6 +24,9 @@ export interface MongoRepositoryOptions {
     strictWrites?: boolean;         // true: a write-concern timeout is an UNKNOWN outcome (fail closed) instead of a degraded ack
     writeW?: number | 'majority';   // sharded layout: 2 (2 data members + arbiter; majority cannot be acked with one member down)
     writeTimeoutMs?: number;
+    // Who stamps ingested_at on first insert. 'store' (default): the database clock, so a skewed aggregator node cannot write
+    // records dated in the future. 'caller': the value in the record (deterministic ordering in tests).
+    ingestedAtSource?: 'store' | 'caller';
 }
 
 const HAZARDS = 'hazards';
@@ -89,10 +92,18 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         if (eventVersion !== undefined) and.push({ $or: [{ event_version: { $exists: false } }, { event_version: { $lt: eventVersion } }] });
         const filter: Filter<Document> = and.length ? { _id: id as never, $and: and } : { _id: id as never };
 
-        const $set: Document = { ...rest, occurred_at: normalizeIso(event.occurred_at) };
-        if (eventVersion !== undefined) $set['event_version'] = eventVersion;
-        const update: Document = { $set, $setOnInsert: { hazard_id: id, ingested_at } };
-        if (epoch !== undefined) update['$max'] = { fence_epoch: epoch };
+        // Aggregation-pipeline update so the stamp can use the server clock ($$NOW). Every value goes through $literal: in a
+        // pipeline a string starting with '$' would otherwise be read as a field path.
+        const lit = (v: unknown): Document => ({ $literal: v });
+        const stamp: unknown = this.o.ingestedAtSource === 'caller'
+            ? lit(ingested_at)
+            : { $dateToString: { date: '$$NOW', format: '%Y-%m-%dT%H:%M:%S.%LZ', timezone: 'UTC' } };
+        const $set: Document = { hazard_id: lit(id), ingested_at: { $ifNull: ['$ingested_at', stamp] } };
+        for (const [k, v] of Object.entries(rest)) $set[k] = lit(v);
+        $set['occurred_at'] = lit(normalizeIso(event.occurred_at));
+        if (eventVersion !== undefined) $set['event_version'] = lit(eventVersion);
+        if (epoch !== undefined) $set['fence_epoch'] = { $max: [{ $ifNull: ['$fence_epoch', lit(epoch)] }, lit(epoch)] };
+        const update: Document[] = [{ $set }];
 
         try {
             // Fence/version check and write are ONE conditional upsert: if the condition fails on an
@@ -105,24 +116,16 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
                 // wtimeout: the primary applied the write, only the second data member has not confirmed (it is down or
                 // re-syncing). Refusing writes for the whole recovery window would stop ingestion; acknowledge it as
                 // DEGRADED instead: durable on ONE copy until resync (see docs/consistency.md). Callers count/log `degraded`.
-                return { outcome: 'applied', hazard_id: id, created: await this.wasCreatedBy(id, ingested_at), degraded: true, detail: errMsg(err) };
+                return { outcome: 'applied', hazard_id: id, created: true, degraded: true, detail: errMsg(err) };
             }
             // Network / server-selection error, or strict mode: the write may or may not have happened.
             return { outcome: 'unavailable', hazard_id: id, detail: errMsg(err) };
         }
     }
 
-    // After a write-concern timeout: was this call the one that inserted the record? Unknown -> true (a duplicate publish is
-    // absorbed by consumer dedup; a missed publish would lose a notification).
-    private async wasCreatedBy(id: string, ingestedAt: string): Promise<boolean> {
-        try {
-            const cur = await this.hazards().findOne({ _id: id as never }, { projection: { ingested_at: 1 }, maxTimeMS: this.deadlineMs, readPreference: 'primary' });
-            return cur?.['ingested_at'] === ingestedAt;
-        } catch {
-            return true;
-        }
-    }
-
+    // After a write-concern timeout it is unknown whether this call inserted the record (the stamp comes from the store, so it
+    // cannot be compared with anything the caller holds): report created. A duplicate publish is absorbed by consumer dedup; a
+    // missed publish would lose a notification.
     private async classifyRejected(id: string, epoch: number | undefined, version: number | undefined): Promise<IngestResult> {
         try {
             const cur = await this.hazards().findOne({ _id: id as never }, { projection: { fence_epoch: 1, event_version: 1 }, maxTimeMS: this.deadlineMs });
