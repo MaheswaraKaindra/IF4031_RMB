@@ -4,7 +4,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "test": "node --import tsx --test src/storage/storage.test.ts src/storage/health.test.ts src/p2p3.test.ts",
+    "test": "node --import tsx --test src/storage/storage.test.ts src/storage/health.test.ts src/coordination/leaseObserver.test.ts src/p2p3.test.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
