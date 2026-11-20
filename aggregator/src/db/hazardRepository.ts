@@ -19,7 +19,7 @@ export interface SourceStatus {
     last_failure_at: string | null; // set while the latest poll failed, null when the source is healthy
 }
 
-export type SourceStatuses = Record<'BMKG' | 'PVMBG', SourceStatus>;
+export type SourceStatuses = Record<'BMKG' | 'PVMBG' | 'SENSOR_PANTAI', SourceStatus>;
 
 // true only when a new document was inserted (false = it already existed and was only updated).
 // hazard_id and ingested_at are set on insert only: they keep the first value when the same record is fetched again.
@@ -73,7 +73,7 @@ export async function findHazards(filter: HazardFilter, limit: number): Promise<
     return docs.map(({ _id, ...rest }) => rest);
 }
 
-export async function markSourceSuccess(source: 'BMKG' | 'PVMBG'): Promise<void> {
+export async function markSourceSuccess(source: 'BMKG' | 'PVMBG' | 'SENSOR_PANTAI'): Promise<void> {
     await getSourceStatus().updateOne(
         { _id: source },
         { $set: { last_success_at: new Date().toISOString() }, $unset: { last_failure_at: '' } },
@@ -81,7 +81,7 @@ export async function markSourceSuccess(source: 'BMKG' | 'PVMBG'): Promise<void>
     );
 }
 
-export async function markSourceFailure(source: 'BMKG' | 'PVMBG'): Promise<void> {
+export async function markSourceFailure(source: 'BMKG' | 'PVMBG' | 'SENSOR_PANTAI'): Promise<void> {
     await getSourceStatus().updateOne(
         { _id: source },
         { $set: { last_failure_at: new Date().toISOString() } },
@@ -94,6 +94,7 @@ export async function getSourceStatuses(): Promise<SourceStatuses> {
     const statuses: SourceStatuses = {
         BMKG: { last_success_at: null, last_failure_at: null },
         PVMBG: { last_success_at: null, last_failure_at: null },
+        SENSOR_PANTAI: { last_success_at: null, last_failure_at: null },
     };
     for (const d of docs) {
         statuses[d._id] = { last_success_at: d.last_success_at ?? null, last_failure_at: d.last_failure_at ?? null };

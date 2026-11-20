@@ -122,6 +122,27 @@ metrics.register('satellite_virtual_now_seconds', 'gauge', 'Feed virtual clock i
 metrics.register('satellite_feed_speed', 'gauge', 'Playback speed of the feed session');
 metrics.register('satellite_session_poll_failures_total', 'counter', 'Failed /v1/session polls');
 metrics.register('satellite_batch_retries_total', 'counter', 'Processor batches retried after a transient failure');
+metrics.register('coastal_poll_total', 'counter', 'Sensor Pantai poll ticks by outcome');
+metrics.register('coastal_poll_duration_seconds', 'histogram', 'Sensor Pantai poll duration in seconds');
+metrics.register('coastal_sensor_requests_total', 'counter', 'Requests actually sent to Sensor Pantai by endpoint and outcome');
+metrics.register('coastal_observations_total', 'counter', 'Observations handled by outcome');
+metrics.register('coastal_quarantine_total', 'counter', 'Observations quarantined by reason');
+metrics.register('coastal_quarantined_critical_total', 'counter', 'Observations flagged critical by the sensor that violate the contract and were quarantined');
+metrics.register('coastal_stations_invalid_total', 'counter', 'Station records rejected by validation');
+metrics.register('coastal_sensor_resets_total', 'counter', 'Times the sensor clock went backwards and its log was read again from the start');
+metrics.register('coastal_blind_rewinds_total', 'counter', 'Times the poller re-read the sensor log from the start after a long stretch without any observation');
+metrics.register('coastal_id_reuse_total', 'counter', 'Observations whose id was reused by the sensor for different content');
+metrics.register('coastal_breaker_state', 'gauge', 'Sensor circuit breaker state: 0 closed, 1 half open, 2 open');
+metrics.register('coastal_breaker_transitions_total', 'counter', 'Sensor circuit breaker transitions by target state');
+metrics.register('coastal_sensor_lag_seconds', 'gauge', 'Sensor generated_at minus newest observed_at, in sensor time');
+metrics.register('coastal_sensor_health', 'gauge', 'Semantic sensor health, 1 for the current state');
+metrics.register('coastal_silent_stations', 'gauge', 'Stations silent beyond the allowed sensor time');
+metrics.register('coastal_fast_publish_total', 'counter', 'Critical alerts published straight to the critical queue before the store write, by outcome');
+metrics.register('coastal_relay_total', 'counter', 'Critical delivery publish attempts by outcome');
+metrics.register('coastal_ledger_entries', 'gauge', 'Critical delivery ledger entries by state');
+metrics.register('coastal_oldest_undelivered_seconds', 'gauge', 'Age of the oldest unacknowledged critical delivery');
+metrics.register('coastal_critical_delivery_seconds', 'histogram', 'Seconds from ingress to Tim Lapangan receiver acknowledgement');
+metrics.register('coastal_critical_acks_total', 'counter', 'Receiver acknowledgements by first or repeated');
 metrics.register('aggregator_storage_unavailable_total', 'counter', 'Storage unavailable outcomes');
 
 // ---- Lightweight W3C TraceContext + OTLP/HTTP JSON Exporter --------------------------------------
