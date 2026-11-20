@@ -14,8 +14,8 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: init
-          image: docker.io/library/mongo:7
-          command: ["mongosh", "--nodb", "--quiet", "--file", "/scripts/init.js"]
+          image: docker.io/library/mongo:4.4
+          command: ["mongo", "--nodb", "--quiet", "/scripts/init.js"]
           env:
             - name: POD_NAMESPACE
               valueFrom: {fieldRef: {fieldPath: metadata.namespace}}

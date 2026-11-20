@@ -105,7 +105,7 @@ patches:
               # NOT on RabbitMQ: the aggregator buffers and reconnects by itself, and the single broker pod is not
               # recreated while its node is unreachable (StatefulSet), which would keep the whole read path down.
               - name: wait-for-deps
-                image: docker.io/library/mongo:7
+                image: docker.io/library/mongo:4.4
                 env:
                   - {name: HOME, value: /tmp}
                   - name: MONGO_URI
@@ -114,7 +114,7 @@ patches:
                   - bash
                   - -c
                   - |
-                    until mongosh "$MONGO_URI" --quiet --eval 'quit(db.hello().ok ? 0 : 1)' >/dev/null 2>&1; do
+                    until mongo "$MONGO_URI" --quiet --eval 'quit(db.isMaster().ok ? 0 : 1)' >/dev/null 2>&1; do
                       echo "waiting for store bootstrap"; sleep 3
                     done
             containers:

@@ -15,14 +15,14 @@ spec:
     spec:
       initContainers:
         - name: wait-config-primary
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command:
             - sh
             - -c
             - |
-              until mongosh --quiet --host mongo-cfg-1-0.mongo-cfg-1 --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' ||
-                    mongosh --quiet --host mongo-cfg-2-0.mongo-cfg-2 --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' ||
-                    mongosh --quiet --host mongo-cfg-3-0.mongo-cfg-3 --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; do
+              until mongo --quiet --host mongo-cfg-1-0.mongo-cfg-1 --eval 'quit(db.isMaster().ismaster ? 0 : 1)' ||
+                    mongo --quiet --host mongo-cfg-2-0.mongo-cfg-2 --eval 'quit(db.isMaster().ismaster ? 0 : 1)' ||
+                    mongo --quiet --host mongo-cfg-3-0.mongo-cfg-3 --eval 'quit(db.isMaster().ismaster ? 0 : 1)'; do
                 echo "waiting for config replica set primary"; sleep 3
               done
               cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile
@@ -34,7 +34,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongos
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["mongos"]
           args:
             - --configdb
