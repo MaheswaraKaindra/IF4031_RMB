@@ -72,7 +72,8 @@ const REPLAY_MAX_PER_SEC = parseInt(process.env.REPLAY_MAX_PER_SEC || '50', 10);
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const EXCHANGE = 'hazard_events';
 const CRITICAL_EXCHANGE = 'hazard_critical';
-const CRITICAL_QUEUE = 'q_critical_alerts';
+const CRITICAL_QUEUE = 'q_critical_alerts_v2';
+const CRITICAL_QUEUE_ARGS = { 'x-queue-type': 'quorum', 'x-delivery-limit': 1_000_000 };
 const RECONNECT_DELAY_MS = Number(process.env.BROKER_RECONNECT_DELAY_MS || 1000);
 
 // A connect attempt towards a broker that is restarting can hang until the OS gives up (about two minutes). Bound it, and use
@@ -212,7 +213,7 @@ async function initRabbitMQ(): Promise<void> {
         const channel = await connection.createConfirmChannel();
         await channel.assertExchange(EXCHANGE, 'fanout', { durable: true });
         await channel.assertExchange(CRITICAL_EXCHANGE, 'direct', { durable: true });
-        await channel.assertQueue(CRITICAL_QUEUE, { durable: true });
+        await channel.assertQueue(CRITICAL_QUEUE, { durable: true, arguments: CRITICAL_QUEUE_ARGS });
         await channel.bindQueue(CRITICAL_QUEUE, CRITICAL_EXCHANGE, 'critical.field_report');
         await channel.bindQueue(CRITICAL_QUEUE, CRITICAL_EXCHANGE, 'critical.coastal');
 

@@ -19,7 +19,7 @@ async function recordReceipt(event: any, traceparent?: string): Promise<void> {
 runConsumer({
     service: 'consumer-notifier',
     queue: 'q_field_notifier',
-    criticalQueue: 'q_critical_alerts',
+    criticalQueue: 'q_critical_alerts_v2',
     criticalRoutingKeys: ['critical.field_report', 'critical.coastal'],
     onCriticalReceived: (event, _log, traceparent) => recordReceipt(event, traceparent),
     handle: (event, log) => {

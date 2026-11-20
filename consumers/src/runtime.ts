@@ -8,6 +8,7 @@ const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const HEALTH_PORT = parseInt(process.env.HEALTH_PORT || '8095', 10);
 const EXCHANGE = 'hazard_events';
 const CRITICAL_EXCHANGE = 'hazard_critical';
+const CRITICAL_QUEUE_ARGS = { 'x-queue-type': 'quorum', 'x-delivery-limit': 1_000_000 };
 const RECONNECT_DELAY_MS = Number(process.env.BROKER_RECONNECT_DELAY_MS || 1000);
 
 // A connect attempt towards a broker that is restarting can hang until the OS gives up (about two minutes). Bound it, and use
@@ -238,7 +239,7 @@ export function runConsumer({ service, queue, criticalQueue, criticalRoutingKeys
             if (criticalQueue) {
                 const critChannel = await conn.createChannel();
                 await critChannel.assertExchange(CRITICAL_EXCHANGE, 'direct', { durable: true });
-                const cq = await critChannel.assertQueue(criticalQueue, { durable: true });
+                const cq = await critChannel.assertQueue(criticalQueue, { durable: true, arguments: CRITICAL_QUEUE_ARGS });
                 for (const rk of criticalRoutingKeys ?? ['critical.field_report', 'critical.coastal']) {
                     await critChannel.bindQueue(cq.queue, CRITICAL_EXCHANGE, rk);
                 }
