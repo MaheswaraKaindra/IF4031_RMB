@@ -26,8 +26,9 @@ Node history: `node-a`, `node-b`, `node-c` at the start. `node-b` was powered of
 | 3 | Global query, order, pagination | PASS | 141 pages of 500 = 70,396 records, 0 duplicates, 0 order violations; 50 newest events across hazard types, 0 order violations |
 | 4a | One whole shard unreachable (partial path) | PASS | 90 s outage of shard-1 through NodePorts: every audit/analytics/client answer partial with `unavailable_units=[shard-1]`, 0 unmarked answers, 0 bad answers; all records back after restore (lost=0) |
 | 4b | Real VM loss (node-b powered off) | **FAIL for the aggregator-dependent paths** | see "Criterion 4 detail"; store answers stayed complete, no record lost; Audit API and client-api `/events` were down about 107 s because the single aggregator replica was on the dead node (P2, Owner B) |
+| 4c | Real VM loss on a node WITHOUT the aggregator (node-a, with the two fixes below) | PASS | Audit API 1 of 340 probes failed, client-api 3 short failures, auth 0; 119 of 123 audit/analytics answers complete, 4 briefly partial (`store-router` / `scan-timeout`) during the transition; 0 bad answers; lost 0. Before the fixes the same loss gave 364 s of failures (see bugs) |
 | 5 | Replacement on a DIFFERENT machine | PASS | slot 2 moved from node-b to node-d; both copies of every shard equal after 67 s total (23,677 / 23,451 / 23,608); records before 70,430, after 70,738, **lost 0** |
-| 6 | Survives the next loss | PASS (simulated) | slot 3 (node-c's members, PVCs deleted and recreated empty) after the replacement: 0 bad answers over 234 probes, answers complete or explicitly partial, records 70,778 before / 70,824 after, **lost 0**, redundancy restored. A real power-off of node-c was not done |
+| 6 | Survives the next loss | PASS | after node-b was replaced, slot 3 was lost (simulated, PVCs deleted): 0 bad answers over 234 probes, lost 0. Then node-a (slot 1) was powered off for real, twice (the second time with the fixes below): 0 bad answers, lost 0 (71,495 records before, 71,531 after), both copies of every shard equal after the node returned |
 | 7 | Analytics dashboard | PASS (API level) | with shard-1 down, `/internal/analytics/summary` through NodePort 30000 returned `partial:true, unavailable_units:["shard-1"]` and `/analytics` contains the "DATA BELUM LENGKAP" banner logic. The browser rendering and the "Cocokkan dengan Audit API" button were not exercised |
 | - | Placement report | PASS | `p1-report.sh`: per-member role/node/count, per-source checksums, `/internal/audit/location` returns primary and replica nodes of a record |
 
@@ -53,10 +54,7 @@ The failures come from the aggregator being a single replica; it is Owner B's P2
 the aggregator can sit on the killed node. The Audit API requests that hung did so because the NodePort kept routing to the dead
 pod's endpoint until Kubernetes removed it.
 
-Observation, cause not verified: in the slot-3 run, 11 consecutive probes (about 35 s) reported shard-2 as unavailable (partial) although
-its other data member was running. All answers were marked partial and none failed, so the criterion holds, but `docs/consistency.md`
-says one lost node leaves answers complete. Worth checking in phase 2 (a primary election after the member holding the primary was
-removed is the most likely explanation).
+Observation (explained later in the session, see "Bugs found and fixed"): in the slot-3 run, 11 consecutive probes (about 35 s) reported shard-2 as unavailable although its other data member was running; in the node-a run the same false flag lasted minutes until the aggregator was restarted. A stale cached probe client in the aggregator is the suspected cause, and the fix below removed the symptom.
 
 ## Platform checks
 
@@ -91,6 +89,10 @@ instead of URI credentials. The application adapter and the driver needed no cha
 | Store crash-loops: `mongo:7` needs AVX | run on MongoDB 4.4 (commit `6211b49`) |
 | RabbitMQ crash-loops after any restart or node reboot: the kubelet re-applied group-write to `.erlang.cookie` and RabbitMQ rejects a non-owner-only cookie | `fsGroupChangePolicy: OnRootMismatch` (commit `a8df39c`); two restarts verified |
 | StatefulSets never replace pods that are not Ready, so an image change did not roll out to the crash-looping members | not a code bug; I deleted the 12 crash-looping pods (not their PVCs) once |
+| **Cluster DNS was a single point of failure**: k3s runs CoreDNS with 1 replica; powering off the node holding it (node-a) broke every service-name lookup, so the aggregator lost the store, the mocks and RabbitMQ and Audit API / client-api were down **364 s** (until the default 300 s eviction plus a restart). Not seen on the first loss only because CoreDNS was not on node-b | `scripts/k8s/harden-platform.sh` scales CoreDNS to one replica per node, called by `deploy.sh demo`; after it, the same loss gave 1 failed Audit API probe in 340 |
+| **Stale "unavailable shard" in a long-running aggregator**: after the node loss the aggregator kept reporting shard-1 and shard-2 as unreachable (partial answers, analytics banner) for minutes although each had a readable data member and a fresh probe from the same pod succeeded; restarting the aggregator cleared it. Same cause as the unexplained shard-2 partial window in the slot-3 run. Root cause not isolated: the cached per-member probe clients are the suspect | a failed probe now discards its client so the next probe reconnects from scratch, and probe state changes are logged; after it, no persistent partial in the same loss |
+| Redundancy precondition of the P1 scripts compares copy counts with zero tolerance while ingestion keeps adding records, so it can refuse to start | run with `TOL=20` (existing variable); the script default should be raised |
+| My first version of the probe log used the key `member`, which `store-tool` prints on stdout and `members_json` reads as a report row, breaking the P1 scripts | renamed the keys (`probed_member`, `probed_node`) |
 | node-d lacked the application images, so pods landing there could not start | `import-images.sh` must also run for every node added later |
 
 ## Open issues for other owners / later phases
@@ -103,5 +105,5 @@ instead of URI credentials. The application adapter and the driver needed no cha
 ## Not done in this phase
 
 - Tester Agent practice scenarios: the agent is installed (digest verified, 3 pods), scenarios `clock-skew kill-leader kill-store partition schema wipe-node` were only listed. Deferred to phase 2, together with the other owners' work.
-- A real power-off for criterion 6, and the clean redeploy from an empty namespace.
+- The clean redeploy from an empty namespace.
 - Gate 8 (clock skew) needs the Tester Agent.
