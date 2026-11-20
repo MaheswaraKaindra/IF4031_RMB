@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
-const HIST_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10] as const;
+const HIST_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120] as const;
 
 interface LabelledKey {
     name: string;
@@ -108,6 +108,41 @@ metrics.register('aggregator_poll_duration_seconds', 'histogram', 'Source poll d
 metrics.register('aggregator_inbox_messages_total', 'counter', 'Raw inbox state transitions');
 metrics.register('aggregator_inbox_unprocessed', 'gauge', 'Current unprocessed inbox count by status');
 metrics.register('aggregator_outbox_pending', 'gauge', 'Pending field-report outbox entries');
+metrics.register('satellite_ingest_to_store_seconds', 'histogram', 'Seconds from a satellite frame being stored in the feed log to its HazardEvent being stored');
+metrics.register('satellite_processing_backlog', 'gauge', 'Frames in the feed log not yet committed by the processor');
+metrics.register('satellite_committed_offset', 'gauge', 'Highest feed offset whose effects are durable');
+metrics.register('satellite_log_tail_offset', 'gauge', 'Highest feed offset durably stored in the feed log');
+metrics.register('satellite_active_fires', 'gauge', 'Fires currently tracked in processor memory');
+metrics.register('satellite_singleton_detections', 'gauge', 'Detections not part of any fire');
+metrics.register('satellite_late_detections', 'gauge', 'Detections arriving beyond the allowed lateness');
+metrics.register('satellite_watermark_seconds', 'gauge', 'Event-time watermark in epoch seconds');
+metrics.register('satellite_source_latest_offset', 'gauge', 'Newest offset the feed reports in /v1/session');
+metrics.register('satellite_source_offset_lag', 'gauge', 'Feed offsets not yet stored in the feed log (source offset minus log tail)');
+metrics.register('satellite_virtual_now_seconds', 'gauge', 'Feed virtual clock in epoch seconds');
+metrics.register('satellite_feed_speed', 'gauge', 'Playback speed of the feed session');
+metrics.register('satellite_session_poll_failures_total', 'counter', 'Failed /v1/session polls');
+metrics.register('satellite_batch_retries_total', 'counter', 'Processor batches retried after a transient failure');
+metrics.register('coastal_poll_total', 'counter', 'Sensor Pantai poll ticks by outcome');
+metrics.register('coastal_poll_duration_seconds', 'histogram', 'Sensor Pantai poll duration in seconds');
+metrics.register('coastal_sensor_requests_total', 'counter', 'Requests actually sent to Sensor Pantai by endpoint and outcome');
+metrics.register('coastal_observations_total', 'counter', 'Observations handled by outcome');
+metrics.register('coastal_quarantine_total', 'counter', 'Observations quarantined by reason');
+metrics.register('coastal_quarantined_critical_total', 'counter', 'Observations flagged critical by the sensor that violate the contract and were quarantined');
+metrics.register('coastal_stations_invalid_total', 'counter', 'Station records rejected by validation');
+metrics.register('coastal_sensor_resets_total', 'counter', 'Times the sensor clock went backwards and its log was read again from the start');
+metrics.register('coastal_blind_rewinds_total', 'counter', 'Times the poller re-read the sensor log from the start after a long stretch without any observation');
+metrics.register('coastal_id_reuse_total', 'counter', 'Observations whose id was reused by the sensor for different content');
+metrics.register('coastal_breaker_state', 'gauge', 'Sensor circuit breaker state: 0 closed, 1 half open, 2 open');
+metrics.register('coastal_breaker_transitions_total', 'counter', 'Sensor circuit breaker transitions by target state');
+metrics.register('coastal_sensor_lag_seconds', 'gauge', 'Sensor generated_at minus newest observed_at, in sensor time');
+metrics.register('coastal_sensor_health', 'gauge', 'Semantic sensor health, 1 for the current state');
+metrics.register('coastal_silent_stations', 'gauge', 'Stations silent beyond the allowed sensor time');
+metrics.register('coastal_fast_publish_total', 'counter', 'Critical alerts published straight to the critical queue before the store write, by outcome');
+metrics.register('coastal_relay_total', 'counter', 'Critical delivery publish attempts by outcome');
+metrics.register('coastal_ledger_entries', 'gauge', 'Critical delivery ledger entries by state');
+metrics.register('coastal_oldest_undelivered_seconds', 'gauge', 'Age of the oldest unacknowledged critical delivery');
+metrics.register('coastal_critical_delivery_seconds', 'histogram', 'Seconds from ingress to Tim Lapangan receiver acknowledgement');
+metrics.register('coastal_critical_acks_total', 'counter', 'Receiver acknowledgements by first or repeated');
 metrics.register('aggregator_storage_unavailable_total', 'counter', 'Storage unavailable outcomes');
 
 // ---- Lightweight W3C TraceContext + OTLP/HTTP JSON Exporter --------------------------------------
@@ -155,6 +190,9 @@ const SERVICE_NAME = process.env.SERVICE_NAME || 'aggregator';
 const OTLP_ENDPOINT = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '').replace(/\/$/, '');
 const spanBuffer: PendingSpan[] = [];
 let flushScheduled = false;
+let exportInFlight = false;
+let exportPausedUntilMs = 0;
+const EXPORT_PAUSE_MS = 30_000;
 
 function toAttrs(attrs: Record<string, string | number | undefined>) {
     const out: Array<{ key: string; value: { stringValue?: string; intValue?: string } }> = [];
@@ -176,6 +214,9 @@ async function flushSpans(): Promise<void> {
         return;
     }
     const batch = spanBuffer.splice(0, 200);
+    // One export at a time, and a pause after a failure: a collector that cannot be resolved or reached must not keep
+    // lookups and sockets busy (a failing DNS lookup holds one of the 4 libuv threads for ~1 s, starving every other lookup).
+    if (exportInFlight || Date.now() < exportPausedUntilMs) return;
     const payload = {
         resourceSpans: [
             {
@@ -206,6 +247,7 @@ async function flushSpans(): Promise<void> {
         ],
     };
 
+    exportInFlight = true;
     try {
         await fetch(`${OTLP_ENDPOINT}/v1/traces`, {
             method: 'POST',
@@ -215,6 +257,9 @@ async function flushSpans(): Promise<void> {
         });
     } catch {
         // Telemetry must never degrade or fail application traffic
+        exportPausedUntilMs = Date.now() + EXPORT_PAUSE_MS;
+    } finally {
+        exportInFlight = false;
     }
 }
 

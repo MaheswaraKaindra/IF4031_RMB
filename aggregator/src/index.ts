@@ -38,6 +38,9 @@ import {
     type SchemaRulesConfig,
 } from './p3/schemaValidator.js';
 import { computeBackoffWithJitter, MongoRawInbox, type RawInboxItem } from './p3/rawInbox.js';
+import { CoastalService, coastalEnv } from './coastal/service.js';
+import { MongoDeliveryLedger, RECEIVER } from './coastal/ledger.js';
+import { SatelliteService, satelliteEnv } from './satellite/service.js';
 import { MongoFieldReportOutbox, relayPendingOutboxBatch, type FieldReportOutboxRecord } from './p3/fieldReports.js';
 
 const PORT = Number(process.env.AGGREGATOR_PORT || 3000);
@@ -69,8 +72,33 @@ const REPLAY_MAX_PER_SEC = parseInt(process.env.REPLAY_MAX_PER_SEC || '50', 10);
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const EXCHANGE = 'hazard_events';
 const CRITICAL_EXCHANGE = 'hazard_critical';
-const CRITICAL_QUEUE = 'q_critical_alerts';
-const RECONNECT_DELAY_MS = 5000;
+const CRITICAL_QUEUE = 'q_critical_alerts_v2';
+const CRITICAL_QUEUE_ARGS = { 'x-queue-type': 'quorum', 'x-delivery-limit': 1_000_000 };
+const RECONNECT_DELAY_MS = Number(process.env.BROKER_RECONNECT_DELAY_MS || 1000);
+
+// A connect attempt towards a broker that is restarting can hang until the OS gives up (about two minutes). Bound it, and use
+// heartbeats so a half-open connection is noticed in seconds.
+const BROKER_CONNECT_TIMEOUT_MS = Number(process.env.BROKER_CONNECT_TIMEOUT_MS || 3000);
+async function connectBroker(url: string): Promise<amqp.ChannelModel> {
+    const withHeartbeat = url.includes('heartbeat=') ? url : `${url}${url.includes('?') ? '&' : '?'}heartbeat=${Number(process.env.BROKER_HEARTBEAT_SEC || 5)}`;
+    const attempt = amqp.connect(withHeartbeat, { timeout: BROKER_CONNECT_TIMEOUT_MS });
+    let timer: NodeJS.Timeout | undefined;
+    try {
+        return await Promise.race([
+            attempt,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`broker connect timed out after ${BROKER_CONNECT_TIMEOUT_MS} ms`)), BROKER_CONNECT_TIMEOUT_MS + 500);
+            }),
+        ]);
+    } catch (err) {
+        void attempt.then((c) => c.close()).catch(() => undefined);
+        throw err;
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
+
 const MAX_PENDING_PUBLISH = 10_000;
 
 const repo = lazyRepository();
@@ -78,6 +106,7 @@ const fenceStore = new MongoSourceFenceStore(getMongoDb);
 const checkpointStore = new MongoCheckpointStore(getMongoDb);
 const rawInbox = new MongoRawInbox(getMongoDb);
 const fieldReportOutbox = new MongoFieldReportOutbox(getMongoDb);
+const deliveryLedger = new MongoDeliveryLedger(getMongoDb);
 
 let schemaRules: SchemaRulesConfig = defaultSchemaRules();
 const polling = { BMKG: false, PVMBG: false };
@@ -180,11 +209,11 @@ function flushPendingPublish(): void {
 async function initRabbitMQ(): Promise<void> {
     if (shuttingDown) return;
     try {
-        const connection = await amqp.connect(RABBITMQ_URL);
+        const connection = await connectBroker(RABBITMQ_URL);
         const channel = await connection.createConfirmChannel();
         await channel.assertExchange(EXCHANGE, 'fanout', { durable: true });
         await channel.assertExchange(CRITICAL_EXCHANGE, 'direct', { durable: true });
-        await channel.assertQueue(CRITICAL_QUEUE, { durable: true });
+        await channel.assertQueue(CRITICAL_QUEUE, { durable: true, arguments: CRITICAL_QUEUE_ARGS });
         await channel.bindQueue(CRITICAL_QUEUE, CRITICAL_EXCHANGE, 'critical.field_report');
         await channel.bindQueue(CRITICAL_QUEUE, CRITICAL_EXCHANGE, 'critical.coastal');
 
@@ -908,6 +937,29 @@ app.post('/internal/ops/unprocessed/replay', express.json(), async (req, res) =>
     }
 });
 
+// Tim Lapangan receiver acknowledgement. Idempotent: only the first ack of a delivery is counted in the latency histogram.
+app.post('/internal/deliveries/ack', express.json({ limit: '4kb' }), async (req, res) => {
+    const hazardId = req.body?.hazard_id;
+    const receiver = typeof req.body?.receiver === 'string' ? req.body.receiver : RECEIVER;
+    if (typeof hazardId !== 'string' || hazardId === '') {
+        res.status(400).json({ error: 'hazard_id is required' });
+        return;
+    }
+    try {
+        const ack = await deliveryLedger.ack(hazardId, receiver);
+        if (!ack.known) {
+            res.status(404).json({ error: 'unknown delivery' });
+            return;
+        }
+        metrics.inc('coastal_critical_acks_total', { first: String(ack.first) });
+        if (ack.first && ack.latencyMs !== null) metrics.observe('coastal_critical_delivery_seconds', {}, ack.latencyMs / 1000);
+        res.json({ first: ack.first, latency_ms: ack.latencyMs });
+    } catch (error) {
+        getLog(res).warn({ error: errorMessage(error) }, 'delivery ack failed');
+        res.status(503).json({ error: 'ledger unavailable' });
+    }
+});
+
 app.get('/internal/ops/schema-rules', (_req, res) => {
     res.json(schemaRules);
 });
@@ -948,7 +1000,7 @@ const server = app.listen(PORT, async () => {
     // recovery crash-loops until the shard has caught up.
     for (let attempt = 1; ; attempt++) {
         try {
-            await Promise.all([rawInbox.ensureIndexes(), fieldReportOutbox.ensureIndexes()]);
+            await Promise.all([rawInbox.ensureIndexes(), fieldReportOutbox.ensureIndexes(), deliveryLedger.ensureIndexes()]);
             break;
         } catch (error) {
             logger.warn({ error: errorMessage(error), attempt }, 'Inbox/outbox indexes not ready, retrying');
@@ -992,6 +1044,65 @@ const server = app.listen(PORT, async () => {
     bmkgLeader.start();
     pvmbgLeader.start();
 
+    const satelliteCfg = satelliteEnv(process.env);
+    const satelliteService = satelliteCfg
+        ? new SatelliteService(satelliteCfg, {
+              repo,
+              fenceStore,
+              checkpoints: checkpointStore,
+              getDb: getMongoDb,
+              leaseProvider,
+              identity: POD_IDENTITY,
+              leaseDurationMs: LEASE_DURATION_MS,
+              renewDeadlineMs: LEASE_RENEW_DEADLINE_MS,
+              retryPeriodMs: LEASE_RETRY_PERIOD_MS,
+              metrics,
+              logger,
+          })
+        : undefined;
+    if (satelliteService) satelliteService.start();
+    else logger.warn('SATELLITE_GROUP_TOKEN not set, satellite pipeline disabled');
+
+    const coastalCfg = coastalEnv(process.env);
+    const coastalService = coastalCfg
+        ? new CoastalService(coastalCfg, {
+              repo,
+              fenceStore,
+              checkpoints: checkpointStore,
+              ledger: deliveryLedger,
+              leaseProvider,
+              identity: POD_IDENTITY,
+              leaseDurationMs: LEASE_DURATION_MS,
+              renewDeadlineMs: LEASE_RENEW_DEADLINE_MS,
+              retryPeriodMs: LEASE_RETRY_PERIOD_MS,
+              quarantine: async (q) => {
+                  await rawInbox.appendFailure({
+                      source: 'SENSOR_PANTAI',
+                      source_ref_id: q.sourceRefId,
+                      raw: q.raw,
+                      status: 'parked',
+                      reason: q.reason,
+                      retryable: false,
+                  });
+                  metrics.inc('aggregator_inbox_messages_total', { source: 'SENSOR_PANTAI', status: 'parked' });
+              },
+              onCreated: (event) => sendToBroker({ event, correlationId: randomUUID() }, logger),
+              publishCritical: (event, traceparent) =>
+                  publishConfirmedToBroker(CRITICAL_EXCHANGE, 'critical.coastal', Buffer.from(JSON.stringify(event)), {
+                      contentType: 'application/json',
+                      messageId: `${event.hazard_id}:${event.severity}`,
+                      correlationId: event.hazard_id,
+                      headers: traceparent ? { traceparent } : {},
+                      persistent: true,
+                  }),
+              markSource: (ok) => (ok ? markSourceSuccess('SENSOR_PANTAI') : markSourceFailure('SENSOR_PANTAI')),
+              metrics,
+              logger,
+          })
+        : undefined;
+    if (coastalService) coastalService.start();
+    else logger.warn('PANTAI_AUTH_TOKEN not set, coastal pipeline disabled');
+
     const timers = [
         setInterval(pollBmkg, POLLING_INTERVAL),
         setInterval(pollPvmbg, POLLING_INTERVAL),
@@ -1004,7 +1115,7 @@ const server = app.listen(PORT, async () => {
             logger.info({ signal, pod: POD_IDENTITY }, 'aggregator draining and shutting down');
             shuttingDown = true;
             timers.forEach(clearInterval);
-            await Promise.all([bmkgLeader?.stop(), pvmbgLeader?.stop()]);
+            await Promise.all([bmkgLeader?.stop(), pvmbgLeader?.stop(), satelliteService?.stop(), coastalService?.stop()]);
             storageServer.close();
             server.close(async () => {
                 await rabbitConnection?.close().catch(() => undefined);

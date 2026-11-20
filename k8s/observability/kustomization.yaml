@@ -11,5 +11,7 @@ configMapGenerator:
   - name: grafana-dashboards
     files:
       - dashboards/bnpb-overview.json
+      - dashboards/satellite.json
+      - dashboards/coastal.json
 generatorOptions:
   disableNameSuffixHash: true

@@ -4,7 +4,7 @@ import { logger } from '../logger.js';
 import { bookkeepingOptions } from '../storage/health.js';
 
 export interface SourceStatusDoc {
-    _id: 'BMKG' | 'PVMBG';
+    _id: 'BMKG' | 'PVMBG' | 'SENSOR_PANTAI';
     last_success_at?: string;
     // Present only while the latest poll of this source failed, removed again by the next success
     last_failure_at?: string;
@@ -21,7 +21,10 @@ export async function connectMongo(): Promise<void> {
     // wait for 2 data members, reads prefer the primary but fall back to a secondary during an election.
     const sharded = isSharded();
     client = new MongoClient(uri, {
-        serverSelectionTimeoutMS: 5000,
+        serverSelectionTimeoutMS: Number(process.env.MONGO_SERVER_SELECTION_MS ?? 2000),
+        // A restarted store pod must be noticed in seconds: the defaults (30 s connect, 10 s heartbeat) stalled every write path for ~30 s.
+        connectTimeoutMS: Number(process.env.MONGO_CONNECT_TIMEOUT_MS ?? 2000),
+        heartbeatFrequencyMS: Number(process.env.MONGO_HEARTBEAT_MS ?? 1000),
         ...(sharded ? { readPreference: 'primaryPreferred' as const, writeConcern: { w: Number(process.env.STORE_WRITE_W ?? 2), wtimeoutMS: Number(process.env.STORE_WRITE_TIMEOUT_MS ?? 1500) } } : {}),
     });
     await client.connect();
