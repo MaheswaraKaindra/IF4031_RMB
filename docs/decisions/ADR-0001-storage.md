@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-11-16 |
-| Status | **PROPOSED**: implemented, awaiting PoC gate results on the 3-VM cluster (nothing below is claimed as proven) |
+| Status | **PROPOSED**: implemented and measured on the 3-VM cluster on MongoDB 4.4 (gates 8 pending, 4 and 9 partial; see Evidence status) |
 | Owner | A |
 | Revisit trigger | Any gate in `poc/storage/README.md` fails, the demo grows to >= 4 nodes, or the assistants rule differently on arbiter/config-server classification |
 
@@ -52,17 +52,18 @@ Generated from one rule by `k8s/store/generate.mjs`.
 | Geographic/range shard key | Matches the hotspot problem (one region = one shard) and sequential ids hot-spot one chunk. Rejected for placement; hashing evens it out |
 
 ## Evidence status
-Unit tests (ordering, cursors, partial, fencing, checksum format, Audit contract) pass locally against the in-memory reference.
-Gates 1-9 need the cluster: see `poc/storage/README.md`. **Do not cite this ADR as proof until the evidence column is filled.**
+Measured on 2026-11-20 on 3 separate-kernel VMs (details, commands and numbers: `docs/evidence/pc-run-phase1.md`).
+Deviation: the VMs expose no AVX, so the store runs on **MongoDB 4.4.30**, not the MongoDB 7 named in the spec (see the evidence
+file); every result below is for 4.4. Revisit this ADR if the demo moves to hardware or Hyper-V VMs that expose AVX.
 
 | Gate | Result | Evidence |
 |---|---|---|
-| 1 memory | _pending_ | |
-| 2 placement | _pending_ | |
-| 3 node+disk loss | _pending_ | |
-| 4 write path | _pending_ | |
-| 5 replacement + second loss | _pending_ | |
-| 6 global query | _pending_ | |
-| 7 location | _pending_ | |
-| 8 clock skew | _pending_ | |
-| 9 analytics | _pending_ | |
+| 1 memory | PASS (snapshot) | after 70k records the busiest store member used 160 Mi working set under the 1 Gi limit, no OOMKilled; a peak sweep under sustained load was not run |
+| 2 placement | PASS | 50,000 events: max node share 0.669; one-region burst of 20,000: primary write ratio 1.017 |
+| 3 node+disk loss | PASS for the store, FAIL for aggregator-dependent paths | store stayed complete or explicitly partial, 0 records lost on three runs; a real power-off of the node holding the single aggregator replica gave about 107 s of failed Audit API / client-api answers (P2, Owner B) |
+| 4 write path | PARTIAL | unit and adapter tests pass (5/5 on the sharded store, concurrent duplicate upsert applied once); the degraded-ack path during a node loss was not asserted separately |
+| 5 replacement + second loss | PASS | node-b replaced by node-d (a different VM), 67 s to equal copies, lost 0; then slot 3 lost and recovered, lost 0 (the second loss was simulated, not a real power-off) |
+| 6 global query | PASS | 70,396 records paged, 0 duplicates, 0 order violations |
+| 7 location | PASS | `/internal/audit/location` returns primary and replica node of a record |
+| 8 clock skew | _pending_ | needs the Tester Agent (phase 2) |
+| 9 analytics | PARTIAL | numbers and the partial flag verified through the API and NodePort 30000; browser banner and the compare button not exercised |

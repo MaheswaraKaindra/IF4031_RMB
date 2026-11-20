@@ -285,10 +285,10 @@ Pemeriksaan statis tanpa cluster: `./scripts/k8s/verify-resources.sh --manifests
 
 Topologi final: 3 node dengan kernel terpisah (lihat `docs/topology.md` untuk anggaran RAM dan template deklarasi topologi, `docs/deployment.md` untuk diagram deployment). Storage P1 = MongoDB sharded
 (3 shard x [2 data + 1 arbiter] dirotasi di 3 node, 3 config server, 2 mongos); alasan dan trade-off di `docs/decisions/ADR-0001-storage.md`
-(status: **diusulkan**, bukti gate PoC masih menunggu cluster).
+(status: **diusulkan**; gate PoC sudah diukur pada 3 VM, lihat bagian bukti di ADR-0001).
 
 ```bash
-# 1. Cluster k3s (control-plane + 2 worker), lalu label 3 "store slot" ke 3 node BERBEDA
+# 1. Cluster k3s (3 server dengan etcd tertanam, semuanya juga menjalankan pod), lalu label 3 "store slot" ke 3 node BERBEDA
 scripts/k8s/label-nodes.sh node-a node-b node-c
 # 2. Build + push image multi-arch, lalu deploy satu perintah
 PUSH=1 REGISTRY=<registry> TAG=demo scripts/k8s/build-images.sh
@@ -301,6 +301,18 @@ scripts/k8s/verify-resources.sh && scripts/k8s/verify-isolation.sh && scripts/k8
 
 Titik masuk: NodePort 30080 (client-api), 30090 (auth), 30000 (aggregator port 3001 saja: Audit API dan `/analytics`; API internal M1 di :3000 tidak pernah dipublikasikan). Grafana/Jaeger lewat `kubectl port-forward` (`docs/observability.md`).
 Tester Agent: `scripts/k8s/install-tester-agent.sh` (manifest dan digest sesuai spesifikasi, tidak dimodifikasi).
+
+### Deklarasi topologi (demo)
+
+| Node | Peran | Jenis | Host fisik | CPU/RAM host | vCPU/RAM VM |
+|---|---|---|---|---|---|
+| node-a (192.168.56.11) | control-plane + etcd + worker | VM VirtualBox | 1 PC Windows (sama untuk ketiga node) | Intel Core i9-11900K, 32 GB | 4 vCPU / 7 GB |
+| node-c (192.168.56.13) | control-plane + etcd + worker | VM VirtualBox | PC yang sama | sama | 4 vCPU / 7 GB |
+| node-d (192.168.56.14) | control-plane + etcd + worker | VM VirtualBox | PC yang sama | sama | 4 vCPU / 7 GB |
+
+Ketiga node berada pada satu host fisik dengan kernel terpisah (bukan kind/k3d). node-b (192.168.56.12) dipakai pada awal pengujian dan
+digantikan oleh node-d pada uji kehilangan node. Pengukuran dan bukti: `docs/evidence/pc-run-phase1.md`.
+Store berjalan di MongoDB **4.4** (bukan 7) karena VM VirtualBox-on-Hyper-V tidak menyediakan instruksi AVX yang dibutuhkan MongoDB 5.0+.
 
 ### Pengujian P1 (hanya di cluster 3 node)
 
@@ -316,17 +328,19 @@ Tester Agent: `scripts/k8s/install-tester-agent.sh` (manifest dan digest sesuai 
 | 7 dashboard analitik | buka `http://<node>:30000/analytics`, masukkan token audit, tombol "Cocokkan dengan Audit API" |
 | bukti lokasi/sebaran | `scripts/k8s/p1-report.sh` |
 
-Batas yang diketahui saat satu node MATI (diukur pada rehearsal kind, `docker stop` node): pod stateless pindah setelah ~70 s
-(toleransi 20 s di overlay demo, bukan 300 s bawaan); client-api, auth-service dan mongos masing-masing 2 replika di node
-berbeda (auth-service memakai `sessionAffinity: ClientIP` karena refresh token disimpan per replika: klien yang replikanya mati
-cukup meminta `/token` lagi, sama seperti setelah restart; afinitas berlaku per node, jadi klien memakai satu alamat node).
-Aggregator masih 1 replika (menunggu leader election P2, Owner B), jadi bila node yang mati memuatnya, permintaan gagal cepat
-(tanpa menggantung) selama ~80 s, lalu semua jawaban kembali lengkap.
-Tidak ada data yang hilang. RabbitMQ (1 pod, StatefulSet) tidak dibuat ulang selama node-nya mati (HA broker = P3).
+Batas yang diketahui saat satu node MATI (diukur pada 3 VM nyata, node-b dimatikan dengan `poweroff`): node dinyatakan NotReady setelah
+~48 s, pod stateless dipindah setelah ~68 s (toleransi 20 s di overlay demo, bukan 300 s bawaan). client-api, auth-service dan
+mongos masing-masing 2 replika di node berbeda (auth-service memakai `sessionAffinity: ClientIP`; klien yang replikanya mati cukup
+meminta `/token` lagi, dan `/token` tidak pernah gagal pada pengujian). Aggregator masih 1 replika (menunggu leader election P2,
+Owner B): ketika node yang mati memuatnya, Audit API dan `/events` gagal selama ~107 s (14 dari 181 probe 1 Hz gagal; `/events` menjawab
+`503` cepat, sebagian permintaan Audit API menggantung sampai batas waktu 5 s karena NodePort masih menuju endpoint yang mati), lalu
+semua jawaban kembali lengkap. Jawaban store sendiri tetap lengkap atau ditandai `partial` dan tidak ada data yang hilang
+(0 record hilang pada tiga uji). RabbitMQ (1 pod, StatefulSet) tidak dibuat ulang selama node-nya mati, dan setelah kehilangan permanen
+volumenya tidak dapat dipindah (HA broker = P3).
 
 Tanpa cluster: `cd aggregator && npm test` (14 tes: urutan lintas unit, cursor, partial, fencing, format checksum, kontrak Audit API terhadap referensi in-memory).
 Adapter MongoDB terhadap server asli (dibandingkan dengan referensi in-memory; database sementara, dihapus setelahnya):
-`docker run -d --rm -p 27018:27017 --name bnpb-mongo-test mongo:7` lalu `MONGO_TEST_URI=mongodb://localhost:27018 npm run test:mongo`
+`docker run -d --rm -p 27018:27017 --name bnpb-mongo-test mongo:4.4` lalu `MONGO_TEST_URI=mongodb://localhost:27018 npm run test:mongo`
 (sharded: port-forward `svc/mongos` dengan user admin dan tambahkan `MONGO_TEST_SHARDED=1`).
 `scripts/k8s/verify-resources.sh --manifests k8s/overlays/demo`. Jaminan konsistensi per endpoint: `docs/consistency.md`. Kontrak storage untuk Owner B/C: `docs/storage-contract.md`.
 
@@ -343,7 +357,7 @@ Adapter MongoDB terhadap server asli (dibandingkan dengan referensi in-memory; d
 
 ### Batasan saat ini
 
-- Dikerjakan tanpa cluster hidup: manifest ter-render dan lolos pemeriksaan memori/role, logika storage lolos tes unit, tetapi **bootstrap shard, NetworkPolicy, failover, dan semua skrip `p1-*` belum pernah dijalankan** di Kubernetes. Anggap belum terbukti sampai bukti terisi di ADR-0001.
+- Bukti P1 dari 3 VM nyata (bootstrap shard, NetworkPolicy, kehilangan node, penggantian node, kriteria 1-7): `docs/evidence/pc-run-phase1.md` dan tabel di `docs/decisions/ADR-0001-storage.md`. Belum dijalankan: skenario Tester Agent, gate jam (clock skew), dan kehilangan node sungguhan untuk kriteria 6 (hanya simulasi).
 - `hazard_id` kini deterministik (hash `source` + `source_ref_id`) dan kunci shard: perlu disepakati dengan Owner B (P2, dedup).
 - Aggregator dan auth-service tetap 1 replika sampai leader election (P2) dan state auth bersama tersedia. Audit API `unprocessed` mengembalikan daftar kosong sampai inbox P3 tersedia.
 - Service belum mengekspos `/metrics` dan span OTLP; infrastruktur observability siap tetapi panel kosong sampai itu ditambahkan (`docs/observability.md`).

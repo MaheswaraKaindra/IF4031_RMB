@@ -29,9 +29,13 @@ the scenarios may hit any node, so the placement above must (and does) tolerate 
 ## Failure domains
 Pods on the same VM are not separate failure domains. Slots must map to three **different VMs**; `scripts/k8s/label-nodes.sh` refuses duplicates.
 
-## Declaration template (copy into the README at demo time)
+## Declaration (as measured on 2026-11-20; the README carries the same table)
 | Node | Role | Kind (VM/native) | Physical host | Host CPU/RAM | VM vCPU/RAM |
 |---|---|---|---|---|---|
-| node-a | control-plane + worker | VM | _TBD_ | _TBD_ | _TBD_ |
-| node-b | worker | VM | _TBD_ | _TBD_ | _TBD_ |
-| node-c | worker | VM | _TBD_ | _TBD_ | _TBD_ |
+| node-a | control-plane + etcd + worker | VM (VirtualBox 7.1.4) | one Windows PC | Intel Core i9-11900K, 32 GB | 4 vCPU / 7 GB |
+| node-c | control-plane + etcd + worker | VM | same PC | same | 4 vCPU / 7 GB |
+| node-d | control-plane + etcd + worker | VM | same PC | same | 4 vCPU / 7 GB |
+
+node-b was part of the first run and was replaced by node-d in the node-loss test. All three nodes are k3s servers (embedded etcd), so
+the control plane survives losing any one VM. Measured memory on this layout: about 1.9 GiB of pod working set in total after 70k records,
+nodes at 16-32% of their 7 GB (the 8 GB per VM suggested above was not needed; 7 GB per VM was enough).
