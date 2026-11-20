@@ -1,4 +1,5 @@
-export type SourceName = 'BMKG' | 'PVMBG' | 'SATELIT' | 'SENSOR_PANTAI' | 'FIELD_REPORT';
+export type PolledSourceName = 'BMKG' | 'PVMBG';
+export type SourceName = PolledSourceName | 'SATELIT' | 'SENSOR_PANTAI' | 'FIELD_REPORT';
 
 export interface HazardEvent {
     hazard_id: string;
@@ -21,7 +22,7 @@ export interface SourceStatus {
     last_failure_at: string | null;
 }
 
-export type SourceStatuses = Record<SourceName, SourceStatus>;
+export type SourceStatuses = Record<PolledSourceName, SourceStatus>;
 
 export interface SourceFreshness {
     last_success_at: string | null;
