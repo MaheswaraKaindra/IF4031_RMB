@@ -21,7 +21,7 @@ export interface SourceStatus {
     last_failure_at: string | null;
 }
 
-export type PolledSourceName = 'BMKG' | 'PVMBG';
+export type PolledSourceName = 'BMKG' | 'PVMBG' | 'SENSOR_PANTAI';
 export type SourceStatuses = Record<PolledSourceName, SourceStatus>;
 
 export interface SourceFreshness {

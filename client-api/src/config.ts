@@ -26,5 +26,8 @@ export const config = {
     aggregatorTimeoutMs: intFromEnv('AGGREGATOR_TIMEOUT_MS', 2000),
     staleAfterMs: intFromEnv('STALE_AFTER_MS', 10000),
     maxInFlight: intFromEnv('MAX_IN_FLIGHT', 100),
+    reservedFieldTeam: intFromEnv('RESERVED_FIELD_TEAM', 40),
+    mediaMaxInFlight: intFromEnv('MEDIA_MAX_IN_FLIGHT', 30),
+    hardCapInFlight: intFromEnv('HARD_CAP_IN_FLIGHT', 1000),
     logLevel: process.env.LOG_LEVEL || 'info',
 };
