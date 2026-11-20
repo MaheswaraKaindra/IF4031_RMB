@@ -14,8 +14,10 @@ spec:
     metadata:
       labels: {app.kubernetes.io/name: rabbitmq, role: broker}
     spec:
-      # A fresh volume is root-owned: without this the first start cannot write .erlang.cookie and restarts once.
-      securityContext: {fsGroup: 101}   # rabbitmq user in the -alpine image is uid 100 / gid 101
+      # A fresh volume is root-owned: without fsGroup the first start cannot write .erlang.cookie. OnRootMismatch keeps the
+      # kubelet from re-applying group-write to the existing cookie on every restart (RabbitMQ refuses a cookie that is
+      # not owner-only, so a restart or a node reboot would otherwise crash-loop the broker).
+      securityContext: {fsGroup: 101, fsGroupChangePolicy: OnRootMismatch}   # rabbitmq in the -alpine image is uid 100 / gid 101
       containers:
         - name: rabbitmq
           image: docker.io/library/rabbitmq:4-management-alpine
