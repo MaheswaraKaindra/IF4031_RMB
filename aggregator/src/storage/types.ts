@@ -114,6 +114,8 @@ export interface UnitStatus {
     unit: string;
     available: boolean;
     detail?: string | undefined;
+    /** every configured data member is live (false = a write cannot be confirmed by two copies) */
+    redundant?: boolean | undefined;
 }
 
 export interface ICanonicalRepository {

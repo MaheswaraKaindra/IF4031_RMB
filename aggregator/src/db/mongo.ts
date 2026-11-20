@@ -1,6 +1,7 @@
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import type { HazardEvent } from '../utils/mapper.js';
 import { logger } from '../logger.js';
+import { bookkeepingOptions } from '../storage/health.js';
 
 export interface SourceStatusDoc {
     _id: 'BMKG' | 'PVMBG';
@@ -91,5 +92,5 @@ export function getHazards(): Collection<HazardEvent> {
 
 export function getSourceStatus(): Collection<SourceStatusDoc> {
     if (!db) throw new Error('MongoDB not connected');
-    return db.collection<SourceStatusDoc>('source_status');
+    return db.collection<SourceStatusDoc>('source_status', bookkeepingOptions());
 }

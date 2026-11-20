@@ -1,5 +1,6 @@
 import { MongoClient, MongoWriteConcernError, type Collection, type Document, type Filter } from 'mongodb';
 import { logger } from '../logger.js';
+import { setStoreDegraded } from './health.js';
 import { AnalyticsAccumulator } from './analytics.js';
 import { decodeCursor, encodeCursor } from './cursor.js';
 import { hazardIdFor } from './identity.js';
@@ -369,9 +370,13 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         this.refreshing ??= Promise.all(topology.units.map(async (u): Promise<UnitStatus> => {
             const data = u.members.filter((m) => !m.arbiter);
             const hellos = await Promise.all(data.map((m) => this.hello(m)));
-            const ok = hellos.some((h) => h.primary || h.secondary);
-            return { unit: u.name, available: ok, detail: ok ? undefined : 'no readable data member' };
+            const live = hellos.filter((h) => h.primary || h.secondary).length;
+            const ok = live > 0;
+            return { unit: u.name, available: ok, detail: ok ? undefined : 'no readable data member', redundant: live >= data.length };
         })).then((value) => {
+            // Any unit with fewer live data members than configured means two-copy writes cannot be confirmed (see health.ts).
+            const short = value.filter((u) => !u.redundant).map((u) => u.unit);
+            setStoreDegraded(short.length > 0, short.join(','));
             this.statusCache = { at: Date.now(), value };
             return value;
         }).finally(() => { this.refreshing = undefined; });

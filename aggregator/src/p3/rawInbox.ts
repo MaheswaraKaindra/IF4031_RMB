@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Binary, type Collection, type Db } from 'mongodb';
 import type { InboxStatus } from '../storage/contracts.js';
 import { InvalidCursorError } from '../storage/types.js';
+import { bookkeepingOptions } from '../storage/health.js';
 
 export interface RawInboxItem {
     message_id: string;
@@ -160,7 +161,7 @@ export class MongoRawInbox implements RawInboxStore {
     constructor(private readonly getDb: () => Db, private readonly collectionName = 'raw_inbox') {}
 
     private coll(): Collection<MongoInboxDoc> {
-        return this.getDb().collection<MongoInboxDoc>(this.collectionName);
+        return this.getDb().collection<MongoInboxDoc>(this.collectionName, bookkeepingOptions());
     }
 
     async ensureIndexes(): Promise<void> {

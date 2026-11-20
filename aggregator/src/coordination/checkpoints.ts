@@ -1,5 +1,6 @@
 import type { Collection, Db } from 'mongodb';
 import type { Checkpoint, ICheckpoint } from '../storage/contracts.js';
+import { bookkeepingOptions } from '../storage/health.js';
 
 interface CheckpointDoc extends Checkpoint {
     _id: string;
@@ -10,7 +11,7 @@ export class MongoCheckpointStore implements ICheckpoint {
     constructor(private readonly getDb: () => Db, private readonly collectionName = 'source_checkpoints') {}
 
     private coll(): Collection<CheckpointDoc> {
-        return this.getDb().collection<CheckpointDoc>(this.collectionName);
+        return this.getDb().collection<CheckpointDoc>(this.collectionName, bookkeepingOptions());
     }
 
     async get(source: string, partition: string): Promise<Checkpoint | null> {

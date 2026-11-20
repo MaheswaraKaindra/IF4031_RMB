@@ -4,6 +4,7 @@ import type { ICanonicalRepository } from '../storage/types.js';
 import type { HazardEvent } from '../utils/mapper.js';
 import { computeBackoffWithJitter } from './rawInbox.js';
 import { mapFieldReportToHazard, validateFieldReport } from './schemaValidator.js';
+import { bookkeepingOptions } from '../storage/health.js';
 
 export type OutboxStatus = 'pending' | 'published';
 
@@ -55,7 +56,7 @@ export class MongoFieldReportOutbox implements FieldReportStore {
     constructor(private readonly getDb: () => Db, private readonly collectionName = 'field_reports_outbox') {}
 
     private coll(): Collection<FieldReportOutboxRecord> {
-        return this.getDb().collection<FieldReportOutboxRecord>(this.collectionName);
+        return this.getDb().collection<FieldReportOutboxRecord>(this.collectionName, bookkeepingOptions());
     }
 
     async ensureIndexes(): Promise<void> {
