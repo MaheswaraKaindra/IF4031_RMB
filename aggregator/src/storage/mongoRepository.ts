@@ -331,13 +331,28 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         return c;
     }
 
+    // A probe client that failed once is discarded: after a member's VM vanished without closing its connections, a long-lived
+    // client kept reporting the whole shard as unreachable for minutes although a fresh connection succeeded at once (only an
+    // aggregator restart cleared it). The next probe connects from scratch.
     private async hello(m: StoreMember): Promise<{ reachable: boolean; primary: boolean; secondary: boolean }> {
         try {
             const r = await this.memberClient(m, false).db('admin').command({ hello: 1 }, { timeoutMS: this.probeMs });
+            this.noteProbe(m, true);
             return { reachable: true, primary: r['isWritablePrimary'] === true, secondary: r['secondary'] === true };
-        } catch {
+        } catch (err) {
+            this.noteProbe(m, false, errMsg(err));
+            const key = `${m.host}|false`;
+            const stale = this.memberClients.get(key);
+            if (stale) { this.memberClients.delete(key); void stale.close().catch(() => undefined); }
             return { reachable: false, primary: false, secondary: false };
         }
+    }
+
+    private readonly probeState = new Map<string, boolean>();
+    private noteProbe(m: StoreMember, ok: boolean, error?: string): void {
+        if (this.probeState.get(m.name) === ok) return;
+        this.probeState.set(m.name, ok);
+        logger.warn({ probed_member: m.name, probed_node: m.node, reachable: ok, error }, ok ? 'store member probe recovered' : 'store member probe failed');
     }
 
     // A unit is available for READS when at least one data-bearing member is a reachable primary or secondary.
