@@ -4,7 +4,7 @@ export function inFlightLimit(max: number): RequestHandler {
     let inFlight = 0;
 
     return (req: Request, res: Response, next: NextFunction): void => {
-        if (req.path === '/health') {
+        if (req.path === '/health' || req.path === '/metrics') {
             next();
             return;
         }

@@ -109,12 +109,18 @@ export function createStorageRouter(deps: StorageRouterDeps): Router {
     });
 
     r.get('/internal/audit/unprocessed', auth, async (req, res) => {
+        const source = str(req.query['source']);
         const limit = parseLimit(req.query['limit']);
         if (limit === null) return fail(res, 400, 'bad_request', 'limit harus bilangan bulat >= 1');
-        const page = deps.unprocessed
-            ? await deps.unprocessed.list({ source: str(req.query['source']), limit, cursor: str(req.query['cursor']) })
-            : { items: [], next_cursor: null };
-        res.json(page);
+        try {
+            const page = deps.unprocessed
+                ? await deps.unprocessed.list({ source, limit, cursor: str(req.query['cursor']) })
+                : { items: [], next_cursor: null };
+            res.json(page);
+        } catch (err) {
+            if (err instanceof InvalidCursorError) return fail(res, 400, 'bad_request', 'cursor tidak valid');
+            fail(res, 503, 'unavailable', 'penyimpanan tidak dapat dijangkau');
+        }
     });
 
     r.get('/internal/analytics/summary', auth, async (req, res) => {

@@ -1,4 +1,4 @@
-export const HAZARD_TYPES = ['SEISMIC', 'VOLCANIC'] as const;
+export const HAZARD_TYPES = ['SEISMIC', 'VOLCANIC', 'WILDFIRE', 'COASTAL'] as const;
 export const SEVERITIES = ['NORMAL', 'WASPADA', 'SIAGA', 'AWAS'] as const;
 
 export function parseEnum<T extends string>(value: unknown, allowed: readonly T[]): T | undefined | null {

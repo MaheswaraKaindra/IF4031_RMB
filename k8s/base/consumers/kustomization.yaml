@@ -6,4 +6,5 @@ configMapGenerator:
   - name: consumers-config
     literals:
       - HEALTH_PORT=8095
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
       - LOG_LEVEL=info

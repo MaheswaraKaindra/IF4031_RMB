@@ -116,11 +116,18 @@ export async function findHazardBySourceRef(
 export async function attachTsunamiWarning(
     hazardId: string,
     newSeverity: HazardEvent['severity'],
-    tsunamiWarning: unknown
+    tsunamiWarning: unknown,
+    epoch?: number | undefined
 ): Promise<boolean> {
-    const result = await getHazards().updateOne(
-        isSharded() ? { _id: hazardId as never } : { hazard_id: hazardId },
-        { $set: { severity: newSeverity, 'attributes.tsunami_warning': tsunamiWarning } }
-    );
+    const base: Record<string, unknown> = isSharded() ? { _id: hazardId as never } : { hazard_id: hazardId };
+    const filter =
+        epoch === undefined
+            ? base
+            : { ...base, $or: [{ fence_epoch: { $exists: false } }, { fence_epoch: { $lte: epoch } }] };
+    const update: Record<string, unknown> = {
+        $set: { severity: newSeverity, 'attributes.tsunami_warning': tsunamiWarning },
+        ...(epoch === undefined ? {} : { $max: { fence_epoch: epoch } }),
+    };
+    const result = await getHazards().updateOne(filter, update);
     return result.modifiedCount > 0;
 }

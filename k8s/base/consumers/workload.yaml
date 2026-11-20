@@ -14,6 +14,9 @@ spec:
   template:
     metadata:
       labels: {app.kubernetes.io/name: consumer-notifier, role: consumer}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8095"
     spec:
       containers:
         - name: consumer
@@ -52,6 +55,9 @@ spec:
   template:
     metadata:
       labels: {app.kubernetes.io/name: consumer-dashboard, role: consumer}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8095"
     spec:
       containers:
         - name: consumer
@@ -91,6 +97,9 @@ spec:
   template:
     metadata:
       labels: {app.kubernetes.io/name: consumer-portal, role: consumer}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8095"
     spec:
       containers:
         - name: consumer

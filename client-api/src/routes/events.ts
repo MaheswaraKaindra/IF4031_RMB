@@ -30,7 +30,11 @@ eventsRouter.get('/', async (req, res) => {
     }
     const fields = requestedFields ?? defaultFields(scope);
 
-    const ctx: RequestContext = { correlationId: getCorrelationId(res), log: getLog(res) };
+    const ctx: RequestContext = {
+        correlationId: getCorrelationId(res),
+        traceparent: typeof res.locals.traceparent === 'string' ? res.locals.traceparent : undefined,
+        log: getLog(res),
+    };
 
     const [eventsResult, statusResult] = await Promise.allSettled([
         fetchEvents({ hazard_type, severity, limit }, ctx),

@@ -1,8 +1,11 @@
+export type PolledSourceName = 'BMKG' | 'PVMBG';
+export type SourceName = PolledSourceName | 'SATELIT' | 'SENSOR_PANTAI' | 'FIELD_REPORT';
+
 export interface HazardEvent {
     hazard_id: string;
-    source: 'BMKG' | 'PVMBG';
+    source: SourceName;
     source_ref_id: string;
-    hazard_type: 'SEISMIC' | 'VOLCANIC';
+    hazard_type: 'SEISMIC' | 'VOLCANIC' | 'WILDFIRE' | 'COASTAL';
     severity: 'NORMAL' | 'WASPADA' | 'SIAGA' | 'AWAS';
     area_name: string;
     latitude: number;
@@ -12,8 +15,6 @@ export interface HazardEvent {
     attributes: Record<string, unknown>;
 }
 
-export type SourceName = 'BMKG' | 'PVMBG';
-
 export type Scope = 'events:read:summary' | 'events:read:raw';
 
 export interface SourceStatus {
@@ -21,7 +22,7 @@ export interface SourceStatus {
     last_failure_at: string | null;
 }
 
-export type SourceStatuses = Record<SourceName, SourceStatus>;
+export type SourceStatuses = Record<PolledSourceName, SourceStatus>;
 
 export interface SourceFreshness {
     last_success_at: string | null;
