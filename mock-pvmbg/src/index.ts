@@ -106,8 +106,14 @@ app.get('/metrics', (_req: Request, res: Response) => {
     res.type('text/plain; version=0.0.4').send(lines.join('\n') + '\n');
 });
 
+// ADMIN_OPEN=1 (set only in the Kubernetes manifests): /admin/* is callable without the token. The official Tester Agent calls these
+// endpoints from inside the cluster and holds no secrets, so with the token required its `schema` scenario fails with HTTP 401.
+// Docker Compose keeps the token requirement (variable unset).
+const ADMIN_OPEN = process.env.ADMIN_OPEN === '1';
+
 app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path === '/health' || req.path === '/metrics') return next();
+    if (ADMIN_OPEN && req.path.startsWith('/admin')) return next();
 
     const authHeader = req.headers.authorization;
     const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined;

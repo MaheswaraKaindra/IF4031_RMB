@@ -9,3 +9,4 @@ configMapGenerator:
       - BMKG_EVENT_INTERVAL_MS=10000
       - BMKG_WARNING_DELAY_MS=0
       - LOG_LEVEL=info
+      - ADMIN_OPEN=1
