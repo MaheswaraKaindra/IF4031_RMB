@@ -36,6 +36,7 @@ fi
 
 echo "context: $(kubectl config current-context)  overlay: $OVERLAY  store: $STORE_MODE"
 kubectl apply -f "$ROOT/k8s/base/namespace.yaml"
+[ "$OVERLAY" = demo ] && "$ROOT/scripts/k8s/harden-platform.sh"
 "$ROOT/scripts/k8s/create-secrets.sh"
 [ "$STORE_MODE" = sharded ] && "$ROOT/scripts/k8s/store-topology.sh"
 # Jobs are immutable: drop the previous bootstrap Job so a changed script re-runs (the script itself is idempotent).
