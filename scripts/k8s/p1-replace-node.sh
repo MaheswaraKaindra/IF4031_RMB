@@ -60,6 +60,8 @@ for m in $members; do
   echo "member $m Ready on $(kubectl -n "$NS" get pod "$m-0" -o jsonpath='{.spec.nodeName}')"
 done
 
+# The aggregator reloads the placement map in about a minute; until then reports still name the old node.
+for _ in $(seq 1 30); do members_json | jq -e --arg n "$NEW" 'any(.[]; .node == $n)' >/dev/null && break; sleep 5; done
 echo ">>> waiting for re-sync / redundancy (up to 20 min)"
 for _ in $(seq 1 120); do redundancy_ok && break; sleep 10; done
 redundancy_ok || { echo "FAIL: redundancy not restored" >&2; exit 1; }

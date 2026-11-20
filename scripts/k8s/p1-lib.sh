@@ -136,10 +136,11 @@ collect_ids_once() {
 
 members_json() { tool report | jq -c 'select(has("member"))' | jq -s '.'; }
 
-# Redundancy restored = every shard has 2 reachable data members holding the same number of records (within TOL).
+# Redundancy restored = every shard has 2 reachable data members holding the same number of records (within TOL, default 20:
+# ingestion keeps adding records while the two counts are read, so an exact match would refuse to start on a healthy cluster).
 redundancy_ok() {
   members_json | jq -e '
-    group_by(.unit) | all(length == 2 and all(.[]; .count != null and .role != "down") and ((.[0].count - .[1].count) | fabs) <= (env.TOL // "0" | tonumber))' >/dev/null
+    group_by(.unit) | all(length == 2 and all(.[]; .count != null and .role != "down") and ((.[0].count - .[1].count) | fabs) <= (env.TOL // "20" | tonumber))' >/dev/null
 }
 
 # layout helpers
