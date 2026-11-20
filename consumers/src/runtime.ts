@@ -8,7 +8,32 @@ const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const HEALTH_PORT = parseInt(process.env.HEALTH_PORT || '8095', 10);
 const EXCHANGE = 'hazard_events';
 const CRITICAL_EXCHANGE = 'hazard_critical';
-const RECONNECT_DELAY_MS = 5000;
+const RECONNECT_DELAY_MS = Number(process.env.BROKER_RECONNECT_DELAY_MS || 1000);
+
+// A connect attempt towards a broker that is restarting can hang until the OS gives up (about two minutes). Bound it, and use
+// heartbeats so a half-open connection is noticed in seconds.
+const BROKER_CONNECT_TIMEOUT_MS = Number(process.env.BROKER_CONNECT_TIMEOUT_MS || 3000);
+async function connectBroker(url: string): Promise<amqp.ChannelModel> {
+    const withHeartbeat = url.includes('heartbeat=') ? url : `${url}${url.includes('?') ? '&' : '?'}heartbeat=${Number(process.env.BROKER_HEARTBEAT_SEC || 5)}`;
+    const attempt = amqp.connect(withHeartbeat, { timeout: BROKER_CONNECT_TIMEOUT_MS });
+    let timer: NodeJS.Timeout | undefined;
+    try {
+        return await Promise.race([
+            attempt,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`broker connect timed out after ${BROKER_CONNECT_TIMEOUT_MS} ms`)), BROKER_CONNECT_TIMEOUT_MS + 500);
+            }),
+        ]);
+    } catch (err) {
+        void attempt.then((c) => c.close()).catch(() => undefined);
+        throw err;
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
+
+const RECEIPT_RETRY_MS = Number(process.env.RECEIPT_RETRY_MS || 300);
 const OTLP_ENDPOINT = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '').replace(/\/$/, '');
 const TRACEPARENT_RE = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/i;
 
@@ -18,6 +43,8 @@ export interface ConsumerOptions {
     criticalQueue?: string | undefined;
     criticalRoutingKeys?: string[] | undefined;
     handle: (event: any, log: Logger) => void;
+    // Awaited after the event is handled and before the broker ack. Failing it requeues the message with a delay.
+    onCriticalReceived?: ((event: any, log: Logger, traceparent?: string) => Promise<void>) | undefined;
 }
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -63,7 +90,7 @@ class DurableDedupStore {
     }
 }
 
-export function runConsumer({ service, queue, criticalQueue, criticalRoutingKeys, handle }: ConsumerOptions): void {
+export function runConsumer({ service, queue, criticalQueue, criticalRoutingKeys, handle, onCriticalReceived }: ConsumerOptions): void {
     const logger = pino({
         level: process.env.LOG_LEVEL || 'info',
         base: {
@@ -124,7 +151,29 @@ export function runConsumer({ service, queue, criticalQueue, criticalRoutingKeys
         }).catch(() => undefined);
     }
 
-    function wireConsumer(channel: amqp.Channel, queueName: string): Promise<amqp.Replies.Consume> {
+    function wireConsumer(channel: amqp.Channel, queueName: string, isCritical = false): Promise<amqp.Replies.Consume> {
+        const confirmReceipt = async (msg: amqp.ConsumeMessage, event: any, log: Logger, wallStart: number, outcome: 'processed' | 'duplicate'): Promise<void> => {
+            if (isCritical && onCriticalReceived) {
+                try {
+                    const tp = msg.properties.headers?.['traceparent'];
+                    await onCriticalReceived(event, log, typeof tp === 'string' ? tp : undefined);
+                } catch (err) {
+                    incMsg(queueName, 'receipt_failed');
+                    log.warn({ hazard_id: event?.hazard_id, error: errorMessage(err) }, 'Receipt not recorded, requeueing with delay');
+                    setTimeout(() => {
+                        try {
+                            channel.nack(msg, false, true);
+                        } catch {
+                            // channel closed: the broker redelivers the unacked message on reconnect
+                        }
+                    }, RECEIPT_RETRY_MS + Math.floor(Math.random() * RECEIPT_RETRY_MS)).unref();
+                    return;
+                }
+            }
+            incMsg(queueName, outcome);
+            channel.ack(msg);
+            emitConsumerSpan(msg, queueName, wallStart, true);
+        };
         return channel.consume(queueName, (msg) => {
             if (msg === null) return;
             const wallStart = Date.now();
@@ -145,9 +194,7 @@ export function runConsumer({ service, queue, criticalQueue, criticalRoutingKeys
             const dedupKey = hazardId ? `${hazardId}:${event?.severity}` : undefined;
             if (dedupKey && dedup.has(dedupKey)) {
                 log.debug({ hazard_id: hazardId, severity: event?.severity }, 'Duplicate message, skipping');
-                incMsg(queueName, 'duplicate');
-                channel.ack(msg);
-                emitConsumerSpan(msg, queueName, wallStart, true);
+                void confirmReceipt(msg, event, log, wallStart, 'duplicate');
                 return;
             }
 
@@ -162,15 +209,13 @@ export function runConsumer({ service, queue, criticalQueue, criticalRoutingKeys
             }
 
             if (dedupKey) dedup.record(dedupKey);
-            incMsg(queueName, 'processed');
-            channel.ack(msg);
-            emitConsumerSpan(msg, queueName, wallStart, true);
+            void confirmReceipt(msg, event, log, wallStart, 'processed');
         });
     }
 
     async function connect(): Promise<void> {
         try {
-            const conn = await amqp.connect(RABBITMQ_URL);
+            const conn = await connectBroker(RABBITMQ_URL);
             const channel = await conn.createChannel();
 
             await channel.assertExchange(EXCHANGE, 'fanout', { durable: true });
@@ -199,7 +244,7 @@ export function runConsumer({ service, queue, criticalQueue, criticalRoutingKeys
                 }
                 await critChannel.prefetch(20);
                 logger.info({ queue: cq.queue }, 'Waiting for separate critical queue events');
-                await wireConsumer(critChannel, cq.queue);
+                await wireConsumer(critChannel, cq.queue, true);
             }
         } catch (error) {
             logger.error({ error: errorMessage(error), retry_in_ms: RECONNECT_DELAY_MS }, 'Failed to connect to RabbitMQ');
