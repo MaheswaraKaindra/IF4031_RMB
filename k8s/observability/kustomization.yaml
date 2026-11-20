@@ -13,5 +13,6 @@ configMapGenerator:
       - dashboards/bnpb-overview.json
       - dashboards/satellite.json
       - dashboards/coastal.json
+      - dashboards/platform.json
 generatorOptions:
   disableNameSuffixHash: true

@@ -8,6 +8,7 @@ resources:
   - mongos.yaml
   - init-job.yaml
   - policy.yaml
+  - mongo-exporter.yaml
 configMapGenerator:
   - name: store-init-script
     files:

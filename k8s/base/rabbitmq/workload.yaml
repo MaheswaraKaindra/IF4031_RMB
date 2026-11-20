@@ -35,6 +35,9 @@ spec:
   template:
     metadata:
       labels: {app.kubernetes.io/name: rabbitmq, role: broker}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "15692"   # rabbitmq_prometheus plugin (enabled in the image)
     spec:
       # A fresh volume is root-owned: without fsGroup the first start cannot write .erlang.cookie. OnRootMismatch keeps the
       # kubelet from re-applying group-write to the existing cookie on every restart (RabbitMQ refuses a cookie that is

@@ -1,0 +1,104 @@
+# Prometheus exporters for the store: one per shard (replica set state, replication lag, opcounters, connections).
+# Labelled bnpb.io/store so the store NetworkPolicy admits them; role is "other" (they are not store pods).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo-exporter-s1
+  labels: {app.kubernetes.io/name: mongo-exporter-s1, role: other, bnpb.io/store: "true"}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: mongo-exporter-s1}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: mongo-exporter-s1, role: other, bnpb.io/store: "true"}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9216"
+    spec:
+      containers:
+        - name: exporter
+          image: docker.io/percona/mongodb_exporter:0.40.0
+          args: ["--compatible-mode", "--collector.diagnosticdata", "--collector.replicasetstatus", "--discovering-mode=false"]
+          ports: [{name: metrics, containerPort: 9216}]
+          env:
+            - name: STORE_PROBE_PASSWORD
+              valueFrom: {secretKeyRef: {name: store-users, key: STORE_PROBE_PASSWORD}}
+            - name: MONGODB_URI
+              value: "mongodb://probe:$(STORE_PROBE_PASSWORD)@mongo-s1-a-0.mongo-s1-a.sistem-informasi-kebencanaan-bnpb.svc.cluster.local:27017,mongo-s1-b-0.mongo-s1-b.sistem-informasi-kebencanaan-bnpb.svc.cluster.local:27017/?replicaSet=shard-1&authSource=admin"
+          resources:
+            requests: {memory: 128Mi}
+            limits: {memory: 256Mi}
+          readinessProbe:
+            httpGet: {path: /metrics, port: metrics}
+            periodSeconds: 15
+            timeoutSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo-exporter-s2
+  labels: {app.kubernetes.io/name: mongo-exporter-s2, role: other, bnpb.io/store: "true"}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: mongo-exporter-s2}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: mongo-exporter-s2, role: other, bnpb.io/store: "true"}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9216"
+    spec:
+      containers:
+        - name: exporter
+          image: docker.io/percona/mongodb_exporter:0.40.0
+          args: ["--compatible-mode", "--collector.diagnosticdata", "--collector.replicasetstatus", "--discovering-mode=false"]
+          ports: [{name: metrics, containerPort: 9216}]
+          env:
+            - name: STORE_PROBE_PASSWORD
+              valueFrom: {secretKeyRef: {name: store-users, key: STORE_PROBE_PASSWORD}}
+            - name: MONGODB_URI
+              value: "mongodb://probe:$(STORE_PROBE_PASSWORD)@mongo-s2-a-0.mongo-s2-a.sistem-informasi-kebencanaan-bnpb.svc.cluster.local:27017,mongo-s2-b-0.mongo-s2-b.sistem-informasi-kebencanaan-bnpb.svc.cluster.local:27017/?replicaSet=shard-2&authSource=admin"
+          resources:
+            requests: {memory: 128Mi}
+            limits: {memory: 256Mi}
+          readinessProbe:
+            httpGet: {path: /metrics, port: metrics}
+            periodSeconds: 15
+            timeoutSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo-exporter-s3
+  labels: {app.kubernetes.io/name: mongo-exporter-s3, role: other, bnpb.io/store: "true"}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: mongo-exporter-s3}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: mongo-exporter-s3, role: other, bnpb.io/store: "true"}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9216"
+    spec:
+      containers:
+        - name: exporter
+          image: docker.io/percona/mongodb_exporter:0.40.0
+          args: ["--compatible-mode", "--collector.diagnosticdata", "--collector.replicasetstatus", "--discovering-mode=false"]
+          ports: [{name: metrics, containerPort: 9216}]
+          env:
+            - name: STORE_PROBE_PASSWORD
+              valueFrom: {secretKeyRef: {name: store-users, key: STORE_PROBE_PASSWORD}}
+            - name: MONGODB_URI
+              value: "mongodb://probe:$(STORE_PROBE_PASSWORD)@mongo-s3-a-0.mongo-s3-a.sistem-informasi-kebencanaan-bnpb.svc.cluster.local:27017,mongo-s3-b-0.mongo-s3-b.sistem-informasi-kebencanaan-bnpb.svc.cluster.local:27017/?replicaSet=shard-3&authSource=admin"
+          resources:
+            requests: {memory: 128Mi}
+            limits: {memory: 256Mi}
+          readinessProbe:
+            httpGet: {path: /metrics, port: metrics}
+            periodSeconds: 15
+            timeoutSeconds: 5
