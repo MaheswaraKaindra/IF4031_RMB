@@ -1,0 +1,413 @@
+{
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "hide": 2
+      }
+    ]
+  },
+  "title": "BNPB coastal resilience (P5)",
+  "uid": "bnpb-coastal",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Critical delivery latency (ingress to receiver ACK)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(coastal_critical_delivery_seconds_bucket[1m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(coastal_critical_delivery_seconds_bucket[1m])))",
+          "legendFormat": "p50",
+          "refId": "B"
+        }
+      ],
+      "description": "SLI 1. Target: p95 <= 5 s. Measured on the store clock from first sight of the observation to the receiver acknowledgement."
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Undelivered critical events",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(max by (state) (coastal_ledger_entries{state!=\"delivered\"}))",
+          "legendFormat": "pending + published",
+          "refId": "A"
+        },
+        {
+          "expr": "max(coastal_oldest_undelivered_seconds)",
+          "legendFormat": "oldest undelivered (s)",
+          "refId": "B"
+        }
+      ],
+      "description": "Backlog of critical events not yet acknowledged. Must drain to 0 after a receiver or broker failure."
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Sensor circuit breaker",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max(coastal_breaker_state)",
+          "legendFormat": "state (0 closed, 1 half open, 2 open)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(coastal_breaker_transitions_total[1m])) by (to)",
+          "legendFormat": "transitions to {{to}}",
+          "refId": "B"
+        }
+      ],
+      "description": "Open means no request reaches the sensor except one probe per open interval."
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Requests actually sent to the sensor (per second)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(coastal_sensor_requests_total[30s])) by (outcome)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Criterion 4: must not surge while the sensor is unhealthy."
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Semantic sensor health and lag",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max(coastal_sensor_health) by (state)",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        },
+        {
+          "expr": "max(coastal_sensor_lag_seconds)",
+          "legendFormat": "generated_at - newest observed_at (sensor s)",
+          "refId": "B"
+        }
+      ],
+      "description": "healthz proves readiness only. Stale or frozen means the sensor answers but its data is not current."
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Observation outcomes",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(coastal_observations_total[1m])) by (outcome)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(coastal_quarantine_total[1m])) by (reason)",
+          "legendFormat": "quarantine: {{reason}}",
+          "refId": "B"
+        }
+      ],
+      "description": "Stored, duplicate and quarantined observations. Quarantined ones keep their reason in the raw inbox."
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Admission by client class (client-api)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(client_api_admission_total[30s])) by (client_class, outcome)",
+          "legendFormat": "{{client_class}} {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Criterion 5: Tim Lapangan stays admitted while Media is rejected with 429."
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Relay publishes and redeliveries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(coastal_relay_total[30s])) by (outcome)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(coastal_critical_acks_total[30s])) by (first)",
+          "legendFormat": "ack first={{first}}",
+          "refId": "B"
+        }
+      ],
+      "description": "Republishing is backed off (5 s, 10 s, ... 60 s) so a down receiver is not flooded."
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "SLI 1 timeliness (acked within 5 s) over the selected range",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(coastal_critical_delivery_seconds_bucket{le=\"5\"}[$__range])) / sum(increase(coastal_critical_delivery_seconds_count[$__range]))",
+          "legendFormat": "ratio",
+          "refId": "A"
+        }
+      ],
+      "description": "Critical events acknowledged within 5 s divided by acknowledged events. Undelivered events are not in this ratio, see panel 2 for them. SLO 99 percent."
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Error budget used, timeliness (percent of 1 percent)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * (1 - (sum(increase(coastal_critical_delivery_seconds_bucket{le=\"5\"}[$__range])) / sum(increase(coastal_critical_delivery_seconds_count[$__range])))) / 0.01",
+          "legendFormat": "budget used %",
+          "refId": "A"
+        }
+      ],
+      "description": "Budget used = bad events / (events x (1 minus SLO)). Above 100 the SLO is breached for the range."
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Tim Lapangan availability SLI",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(client_api_admission_total{client_class=\"field_team\",outcome=\"admitted\"}[1m])) / sum(rate(client_api_admission_total{client_class=\"field_team\"}[1m]))",
+          "legendFormat": "admitted ratio",
+          "refId": "A"
+        }
+      ],
+      "description": "SLI 3, SLO 99.5 percent. Rejections of this class mean the reserved capacity was exhausted."
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Quarantine of critical-flagged observations, sensor resets, reused ids",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(coastal_quarantined_critical_total[5m])) by (reason)",
+          "legendFormat": "critical quarantined {{reason}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(coastal_sensor_resets_total[5m]))",
+          "legendFormat": "sensor resets",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(increase(coastal_id_reuse_total[5m]))",
+          "legendFormat": "reused ids",
+          "refId": "C"
+        }
+      ],
+      "description": "A critical-flagged observation that violates the contract cannot become a HazardEvent: it needs an operator."
+    }
+  ]
+}
