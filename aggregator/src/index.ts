@@ -939,10 +939,21 @@ const server = app.listen(PORT, async () => {
 
     try {
         await connectMongo();
-        await Promise.all([rawInbox.ensureIndexes(), fieldReportOutbox.ensureIndexes()]);
     } catch (error) {
         logger.fatal({ error: errorMessage(error) }, 'Failed to connect to MongoDB');
         process.exit(1);
+    }
+    // Index creation is a write and needs the store's write concern (w:2). While a shard member is re-syncing after a node
+    // loss it times out: wait and retry (createIndex is idempotent) instead of exiting, otherwise every pod started during a
+    // recovery crash-loops until the shard has caught up.
+    for (let attempt = 1; ; attempt++) {
+        try {
+            await Promise.all([rawInbox.ensureIndexes(), fieldReportOutbox.ensureIndexes()]);
+            break;
+        } catch (error) {
+            logger.warn({ error: errorMessage(error), attempt }, 'Inbox/outbox indexes not ready, retrying');
+            await new Promise((resolve) => setTimeout(resolve, Math.min(2000 * attempt, 10_000)));
+        }
     }
 
     await initRabbitMQ();
