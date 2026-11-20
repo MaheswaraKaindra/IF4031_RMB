@@ -6,15 +6,16 @@
 #   5    only BNPB Ops can inspect the parked messages
 #   6    POST /field-reports answers 202 quickly even with the broker down, and no 202'd report is lost or doubled after the
 #        aggregator pods are killed
-# Restores the mock to baseline and RabbitMQ to 1 replica on exit.
+# Restores the mock to baseline and RabbitMQ to its original replica count on exit.
 set -euo pipefail
 source "$(dirname "$0")/assert-lib.sh"
 tmp=$(mktemp -d)
+BROKER_REPLICAS=$(kubectl -n "$NS" get statefulset rabbitmq -o jsonpath='{.spec.replicas}')
 restore() {
   cleanup_pf; rm -rf "$tmp"
   mock_admin mock-pvmbg 8082 /admin/schema-version '{"mode":"baseline"}' >/dev/null 2>&1 || true
   mock_admin mock-pvmbg 8082 /admin/malformed '{"mode":"none"}' >/dev/null 2>&1 || true
-  kubectl -n "$NS" scale statefulset rabbitmq --replicas=1 >/dev/null 2>&1 || true
+  kubectl -n "$NS" scale statefulset rabbitmq --replicas="$BROKER_REPLICAS" >/dev/null 2>&1 || true
 }
 trap restore EXIT
 
@@ -93,7 +94,7 @@ done
 [ "$acc" = "$N" ] && pass "$N/$N reports answered 202 while the broker was down" || fail "only $acc/$N reports answered 202 with the broker down"
 [ "$slow" = 0 ] && pass "all 202 answers took under 1 s" || fail "$slow answer(s) took more than 1 s"
 kubectl -n "$NS" delete pods -l app.kubernetes.io/name=aggregator --wait=false >/dev/null
-kubectl -n "$NS" scale statefulset rabbitmq --replicas=1 >/dev/null
+kubectl -n "$NS" scale statefulset rabbitmq --replicas="$BROKER_REPLICAS" >/dev/null
 wait_for 240 all_ready aggregator && pass "aggregator pods recovered on their own" || fail "aggregator did not recover within 240 s"
 sleep 20
 cursor=""; : > "$tmp/fr"
