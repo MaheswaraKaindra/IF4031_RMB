@@ -80,6 +80,9 @@ spec:
         - podSelector: {matchLabels: {role: aggregator}}
         - podSelector: {matchLabels: {role: consumer}}
       ports: [{protocol: TCP, port: 5672}]
+    - from:
+        - podSelector: {matchLabels: {role: broker}}
+      ports: [{protocol: TCP, port: 4369}, {protocol: TCP, port: 25672}]
 ---
 # Temporary single-node Mongo (M1 layout). The sharded store has its own policy in k8s/store/policy.yaml.
 apiVersion: networking.k8s.io/v1
