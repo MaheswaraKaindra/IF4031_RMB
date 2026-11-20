@@ -52,6 +52,19 @@ patches:
             topologySpreadConstraints:
               - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeTaintsPolicy: Honor,
                  labelSelector: {matchLabels: {app.kubernetes.io/name: client-api}}}
+  # Aggregator replicas must sit on different nodes (spec P2 criterion 1); the base only prefers it (ScheduleAnyway), and
+  # measured placement put two replicas and the leader on one node, so a single node loss took out most of them.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: aggregator
+      spec:
+        template:
+          spec:
+            topologySpreadConstraints:
+              - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeTaintsPolicy: Honor,
+                 labelSelector: {matchLabels: {app.kubernetes.io/name: aggregator}}}
   # auth-service: 2 replicas on different nodes so token issuance survives a node loss. Both Services use ClientIP
   # affinity (refresh tokens are per replica); a client whose replica dies re-authenticates with /token, as after a restart.
   - patch: |-
