@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-11-16 |
-| Status | **PROPOSED**: implemented and measured on the 3-VM cluster on MongoDB 4.4 (gates 8 pending, 4 and 9 partial; see Evidence status) |
+| Status | **PROPOSED**: implemented and measured on the 3-VM cluster on MongoDB 4.4 (gate 9 partial; see Evidence status and `docs/evidence/pc-run-phase2.md`) |
 | Owner | A |
 | Revisit trigger | Any gate in `poc/storage/README.md` fails, the demo grows to >= 4 nodes, or the assistants rule differently on arbiter/config-server classification |
 
@@ -54,16 +54,16 @@ Generated from one rule by `k8s/store/generate.mjs`.
 ## Evidence status
 Measured on 2026-11-20 on 3 separate-kernel VMs (details, commands and numbers: `docs/evidence/pc-run-phase1.md`).
 Deviation: the VMs expose no AVX, so the store runs on **MongoDB 4.4.30**, not the MongoDB 7 named in the spec (see the evidence
-file); every result below is for 4.4. Revisit this ADR if the demo moves to hardware or Hyper-V VMs that expose AVX.
+file); every result below is for 4.4. Consequence for the code base: no aggregation operator newer than 4.4 may be used (the coastal ledger's `$dateAdd` had to be replaced). Revisit this ADR if the demo moves to hardware or Hyper-V VMs that expose AVX.
 
 | Gate | Result | Evidence |
 |---|---|---|
 | 1 memory | PASS (snapshot) | after 70k records the busiest store member used 160 Mi working set under the 1 Gi limit, no OOMKilled; a peak sweep under sustained load was not run |
 | 2 placement | PASS | 50,000 events: max node share 0.669; one-region burst of 20,000: primary write ratio 1.017 |
 | 3 node+disk loss | PASS for the store, FAIL for aggregator-dependent paths | store stayed complete or explicitly partial, 0 records lost on three runs; a real power-off of the node holding the single aggregator replica gave about 107 s of failed Audit API / client-api answers (P2, Owner B) |
-| 4 write path | PARTIAL | unit and adapter tests pass (5/5 on the sharded store, concurrent duplicate upsert applied once); the degraded-ack path during a node loss was not asserted separately |
+| 4 write path | PASS | unit and adapter tests pass (5/5 on the sharded store, concurrent duplicate upsert applied once); during real node losses writes continued as `degraded` acknowledgements with 0 records lost and no false acknowledgement; coordination and inbox bookkeeping now follows the same degraded rule (phase 2) |
 | 5 replacement + second loss | PASS | node-b replaced by node-d (a different VM), 67 s to equal copies, lost 0; then slot 3 lost and recovered, lost 0 (the second loss was simulated, not a real power-off) |
 | 6 global query | PASS | 70,396 records paged, 0 duplicates, 0 order violations |
 | 7 location | PASS | `/internal/audit/location` returns primary and replica node of a record |
-| 8 clock skew | _pending_ | needs the Tester Agent (phase 2) |
+| 8 clock skew | PASS (own script) | `p2-clock-skew.sh`: leader node clock +45 s then -30 s, the store kept serving, 0 duplicates, 0 records lost; the official Tester Agent `clock-skew` scenario found no eligible target (see `docs/evidence/pc-run-phase2.md`) |
 | 9 analytics | PARTIAL | numbers and the partial flag verified through the API and NodePort 30000; browser banner and the compare button not exercised |
