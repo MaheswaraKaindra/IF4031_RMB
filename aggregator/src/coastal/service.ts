@@ -1,4 +1,5 @@
 import type { Logger } from 'pino';
+import { noteBookkeepingFailure } from '../storage/health.js';
 import type { ISourceFenceStore } from '../coordination/fencing.js';
 import { SourceLeaderManager } from '../coordination/leaderLoop.js';
 import type { ILeaseProvider } from '../coordination/lease.js';
@@ -208,6 +209,7 @@ export class CoastalService {
                 this.deps.metrics.set('coastal_oldest_undelivered_seconds', {}, c.oldestUndeliveredMs / 1000);
             }
         } catch (err) {
+            noteBookkeepingFailure(err);
             this.deps.logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'coastal relay tick failed');
         } finally {
             this.relayBusy = false;

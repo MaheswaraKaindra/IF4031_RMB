@@ -1,4 +1,5 @@
 import type { Logger } from 'pino';
+import { noteBookkeepingFailure } from '../storage/health.js';
 import type { ISourceFenceStore } from '../coordination/fencing.js';
 import { fencedIngest } from '../coordination/fencing.js';
 import type { LeaderLeaseHandle } from '../coordination/leaderLoop.js';
@@ -392,7 +393,8 @@ export class CoastalPoller {
         if (obs.critical) {
             try {
                 deliveryId = (await this.d.ledger.register(record, span?.traceparent)).id;
-            } catch {
+            } catch (err) {
+                noteBookkeepingFailure(err);
                 throw new StorageRetry('ledger unavailable');
             }
         }
@@ -402,7 +404,8 @@ export class CoastalPoller {
         if (deliveryId) {
             try {
                 await this.d.ledger.markCanonicalApplied(deliveryId);
-            } catch {
+            } catch (err) {
+                noteBookkeepingFailure(err);
                 span?.end(false);
                 throw new StorageRetry('ledger unavailable');
             }

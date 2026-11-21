@@ -1,4 +1,5 @@
 import type { Collection, Db } from 'mongodb';
+import { bookkeepingOptions } from '../../storage/health.js';
 import type { LateDetection } from './processor.js';
 
 export interface ILateStore {
@@ -28,7 +29,7 @@ export class MongoLateStore implements ILateStore {
     constructor(private readonly getDb: () => Db, private readonly collectionName = 'satellite_late_detections') {}
 
     private coll(): Collection<LateDoc> {
-        return this.getDb().collection<LateDoc>(this.collectionName);
+        return this.getDb().collection<LateDoc>(this.collectionName, bookkeepingOptions());
     }
 
     async add(records: LateDetection[]): Promise<void> {

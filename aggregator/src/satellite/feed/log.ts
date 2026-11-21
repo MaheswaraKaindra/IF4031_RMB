@@ -1,4 +1,5 @@
 import type { Collection, Db } from 'mongodb';
+import { bookkeepingOptions } from '../../storage/health.js';
 
 export interface FeedLogEntry {
     offset: number;
@@ -47,7 +48,7 @@ export class MongoFeedLog implements IFeedLog {
     constructor(private readonly getDb: () => Db, private readonly collectionName = 'satellite_feed_log') {}
 
     private coll(): Collection<FeedLogDoc> {
-        return this.getDb().collection<FeedLogDoc>(this.collectionName);
+        return this.getDb().collection<FeedLogDoc>(this.collectionName, bookkeepingOptions());
     }
 
     async append(entries: FeedLogEntry[]): Promise<void> {

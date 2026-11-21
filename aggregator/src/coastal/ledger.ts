@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { bookkeepingOptions } from '../storage/health.js';
 import type { Collection, Db } from 'mongodb';
 import type { HazardRecord } from '../storage/types.js';
 
@@ -182,7 +183,8 @@ export class MongoDeliveryLedger implements IDeliveryLedger {
     constructor(private readonly getDb: () => Db, private readonly collectionName = 'coastal_deliveries') {}
 
     private coll(): Collection<DeliveryEntry> {
-        return this.getDb().collection<DeliveryEntry>(this.collectionName);
+        // bookkeeping write concern: w:2 normally, w:1 while the store is degraded, so a lost node cannot stop critical alerts from being registered
+        return this.getDb().collection<DeliveryEntry>(this.collectionName, bookkeepingOptions());
     }
 
     async ensureIndexes(): Promise<void> {
