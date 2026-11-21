@@ -51,14 +51,18 @@ export class MongoFeedLog implements IFeedLog {
     }
 
     async append(entries: FeedLogEntry[]): Promise<void> {
-        if (entries.length === 0) return;
-        try {
-            await this.coll().insertMany(
-                entries.map((e) => ({ _id: e.offset, ...e })),
-                { ordered: false }
-            );
-        } catch (err) {
-            if (!onlyDuplicateKeyErrors(err)) throw err;
+        // Ordered: a failure stops the batch at the first bad entry, so the stored offsets always form a prefix and the log tail
+        // never jumps over a hole. An entry that already exists (a replayed frame) is skipped and the rest is written.
+        let rest = entries;
+        while (rest.length > 0) {
+            try {
+                await this.coll().insertMany(rest.map((e) => ({ _id: e.offset, ...e })), { ordered: true });
+                return;
+            } catch (err) {
+                const index = duplicateKeyIndex(err);
+                if (index === undefined) throw err;
+                rest = rest.slice(index + 1);
+            }
         }
     }
 
@@ -80,9 +84,14 @@ export class MongoFeedLog implements IFeedLog {
     }
 }
 
-function onlyDuplicateKeyErrors(err: unknown): boolean {
-    if (typeof err !== 'object' || err === null) return false;
-    const e = err as { code?: unknown; writeErrors?: Array<{ code?: unknown }> };
-    if (Array.isArray(e.writeErrors) && e.writeErrors.length > 0) return e.writeErrors.every((w) => w.code === 11000);
-    return e.code === 11000;
+/** Index of the failing entry when an ordered insert stopped on a duplicate key, otherwise undefined (a real error). */
+function duplicateKeyIndex(err: unknown): number | undefined {
+    if (typeof err !== 'object' || err === null) return undefined;
+    const e = err as { code?: unknown; writeErrors?: Array<{ code?: unknown; index?: unknown }>; result?: { result?: { writeErrors?: Array<{ code?: unknown; index?: unknown }> } } };
+    const errs = Array.isArray(e.writeErrors) ? e.writeErrors : e.result?.result?.writeErrors;
+    if (Array.isArray(errs) && errs.length > 0) {
+        const first = errs[0]!;
+        return first.code === 11000 && typeof first.index === 'number' && errs.every((w) => w.code === 11000) ? first.index : undefined;
+    }
+    return e.code === 11000 ? 0 : undefined;
 }

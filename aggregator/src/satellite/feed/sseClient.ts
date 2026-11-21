@@ -16,6 +16,9 @@ export interface SseClientOptions {
     resumeOffset: () => Promise<number>;
     // Resolve only once the frame is durably stored; a rejection drops the connection and resumes from resumeOffset().
     onFrame: (f: DeliveredFrame) => Promise<void>;
+    // Optional group commit: every frame of one network read is handed over in one call, in offset order and without gaps,
+    // so the store can write them in one round trip. Same durability contract as onFrame. When set, onFrame is not used.
+    onFrames?: (frames: DeliveredFrame[]) => Promise<void>;
     fetchImpl?: typeof fetch;
     idleTimeoutMs?: number;
     connectTimeoutMs?: number;
@@ -124,9 +127,23 @@ export class SatelliteSseClient {
             let expected = from;
             let progressed = false;
             armIdle(this.idleTimeoutMs);
+            let pending: DeliveredFrame[] = [];
+            const flush = async (): Promise<void> => {
+                if (pending.length === 0) return;
+                const batch = pending;
+                pending = [];
+                await this.opts.onFrames!(batch);
+                const last = batch[batch.length - 1]!;
+                this.stats.delivered += batch.length;
+                this.stats.lastOffset = last.offset;
+                progressed = true;
+            };
             for (;;) {
                 const { done, value } = await reader.read();
-                if (done) return { progressed };
+                if (done) {
+                    await flush();
+                    return { progressed };
+                }
                 armIdle(this.idleTimeoutMs);
                 for (const frame of parser.push(value)) {
                     const event = decodeFrame(frame);
@@ -142,16 +159,23 @@ export class SatelliteSseClient {
                     if (offset > expected) {
                         this.stats.gapsDetected += 1;
                         this.opts.logger.warn({ expected, received: offset }, 'offset gap on satellite stream, reconnecting');
+                        await flush();
                         await reader.cancel().catch(() => undefined);
                         return { progressed, error: 'offset gap' };
                     }
                     if (event.kind === 'invalid') this.stats.invalidFrames += 1;
+                    if (this.opts.onFrames) {
+                        pending.push({ offset, frame, event });
+                        expected = offset + 1;
+                        continue;
+                    }
                     await this.opts.onFrame({ offset, frame, event });
                     expected = offset + 1;
                     progressed = true;
                     this.stats.delivered += 1;
                     this.stats.lastOffset = offset;
                 }
+                await flush();
             }
         } finally {
             if (idle) clearTimeout(idle);

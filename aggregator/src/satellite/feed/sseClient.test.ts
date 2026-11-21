@@ -96,7 +96,7 @@ test('a handler failure drops the connection and the same frame is delivered aga
     const realAppend = log.append.bind(log);
     let failed = false;
     log.append = async (entries) => {
-        if (!failed && entries[0]?.offset === 2) {
+        if (!failed && entries.some((e) => e.offset === 2)) {
             failed = true;
             throw new Error('store unavailable');
         }
@@ -110,7 +110,9 @@ test('a handler failure drops the connection and the same frame is delivered aga
     await run;
     await feed.close();
     assert.deepEqual(await offsets(log), range(4));
-    assert.equal(feed.requests[1]?.from, 2);
+    // The four frames arrived in one network read and were written as one batch, so the whole batch is retried from the
+    // durable tail + 1 (nothing of it was stored): no frame is lost and none is stored twice.
+    assert.equal(feed.requests[1]?.from, 0);
 });
 
 test('429 and 503 are retried with backoff and the stream resumes afterwards', async () => {
@@ -200,4 +202,49 @@ test('malformed frames are stored raw with their offset and do not stop the stre
     assert.equal(stored.length, 4);
     assert.equal(stored[1]?.raw, '{"offset":1,"det');
     assert.equal(client.stats.invalidFrames, 2);
+});
+
+test('frames of one network read are written in one batch', async () => {
+    const feed = await startFeed((res) => {
+        sseHead(res);
+        res.write(range(200).map((o) => sseBlock(o, 'detection', detectionData(o))).join(''));
+    });
+    const log = new InMemoryFeedLog();
+    let appendCalls = 0;
+    const counting = { append: async (e: Parameters<InMemoryFeedLog['append']>[0]) => { appendCalls += 1; await log.append(e); }, read: log.read.bind(log), tail: log.tail.bind(log) };
+    const client = createFeedIngestor({ baseUrl: feed.url, token: 't', logger: silent, log: counting, backoffBaseMs: 1, backoffMaxMs: 5 });
+    const ac = new AbortController();
+    const run = client.run(ac.signal);
+    await waitFor(async () => (await log.tail()) === 199);
+    ac.abort();
+    await run;
+    await feed.close();
+    assert.deepEqual(await offsets(log), range(200));
+    assert.equal(appendCalls < 20, true, `expected far fewer writes than frames, got ${appendCalls}`);
+});
+
+test('a failed batch write is retried from the durable tail with no gap and no duplicate', async () => {
+    const feed = await startFeed((res, from) => {
+        sseHead(res);
+        res.write(range(30).filter((o) => o >= from).map((o) => sseBlock(o, 'detection', detectionData(o))).join(''));
+    });
+    const log = new InMemoryFeedLog();
+    let failures = 1;
+    const flaky = {
+        append: async (e: Parameters<InMemoryFeedLog['append']>[0]) => {
+            if (failures-- > 0) throw new Error('write concern timeout');
+            await log.append(e);
+        },
+        read: log.read.bind(log),
+        tail: log.tail.bind(log),
+    };
+    const client = createFeedIngestor({ baseUrl: feed.url, token: 't', logger: silent, log: flaky, backoffBaseMs: 1, backoffMaxMs: 5 });
+    const ac = new AbortController();
+    const run = client.run(ac.signal);
+    await waitFor(async () => (await log.tail()) === 29);
+    ac.abort();
+    await run;
+    await feed.close();
+    assert.deepEqual(await offsets(log), range(30));
+    assert.equal(feed.requests[1]?.from, 0, 'after the failed write the client resumes from the durable tail + 1');
 });

@@ -13,5 +13,9 @@ export function createFeedIngestor(opts: FeedIngestorOptions): SatelliteSseClien
         onFrame: async ({ offset, frame }) => {
             await log.append([{ offset, kind: frame.event, raw: frame.data, received_at: new Date().toISOString() }]);
         },
+        onFrames: async (frames) => {
+            const receivedAt = new Date().toISOString();
+            await log.append(frames.map(({ offset, frame }) => ({ offset, kind: frame.event, raw: frame.data, received_at: receivedAt })));
+        },
     });
 }
