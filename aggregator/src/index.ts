@@ -6,6 +6,10 @@ import type { Logger } from 'pino';
 
 import { mapSeismicToHazard, mapVolcanicToHazard, pickStrongestWarning, recomputeSeverityFromWarning, warningRank, type HazardEvent } from './utils/mapper.js';
 import { closeMongo, connectMongo, pingMongo } from './db/mongo.js';
+import { createStorageRouter } from './storage/routes.js';
+import { lazyRepository } from './storage/runtime.js';
+import { findHazardsPaged } from './db/hazardRepository.js';
+import { isSharded } from './db/mongo.js';
 import { upsertHazard, attachTsunamiWarning, markSourceSuccess, markSourceFailure, getSourceStatuses, findHazards, findHazardBySourceRef } from './db/hazardRepository.js';
 import { CORRELATION_HEADER, errorMessage, getLog, logger, requestLogger, timed } from './logger.js';
 
@@ -349,6 +353,13 @@ app.get('/internal/events', async (req, res) => {
     }
 
     try {
+        if (isSharded()) {
+            const page = await timed(getLog(res), 'mongo', 'find hazards (sharded)', () =>
+                findHazardsPaged({ hazard_type, severity, source, since }, limit)
+            );
+            res.json(page.partial ? { events: page.events, partial: true, unavailable_units: page.unavailable_units } : { events: page.events });
+            return;
+        }
         const events = await timed(getLog(res), 'mongo', 'find hazards', () =>
             findHazards({ hazard_type, severity, source, since }, limit)
         );
@@ -357,6 +368,17 @@ app.get('/internal/events', async (req, res) => {
         getLog(res).error({ error: errorMessage(error) }, 'Failed to read events');
         res.status(503).json({ error: 'Canonical Store unavailable' });
     }
+});
+
+// Appendix A Audit API + P1 analytics (storage side, see aggregator/src/storage/routes.ts) on a SEPARATE port.
+// The M1 /internal/* routes above are unauthenticated and rely on network isolation (client-api only); the externally
+// reachable entry point must never expose them, so only this token-protected listener is published (NodePort / policy).
+const STORAGE_API_PORT = process.env.STORAGE_API_PORT || 3001;
+const storageApp = express();
+storageApp.use(requestLogger);
+storageApp.use(createStorageRouter({ repo: lazyRepository(), auditToken: process.env.AUDIT_TOKEN }));
+const storageServer = storageApp.listen(STORAGE_API_PORT, () => {
+    logger.info({ port: STORAGE_API_PORT }, 'Audit/analytics API started');
 });
 
 app.get('/internal/status', async (req, res) => {
@@ -387,6 +409,7 @@ const server = app.listen(PORT, async () => {
             logger.info({ signal }, 'aggregator shutting down');
             shuttingDown = true;
             pollers.forEach(clearInterval);
+            storageServer.close();
             server.close(async () => {
                 await rabbitConnection?.close().catch(() => undefined);
                 await closeMongo();

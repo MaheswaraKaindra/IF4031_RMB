@@ -40,13 +40,20 @@ async function timedCall<T>(ctx: RequestContext, name: string, call: () => Promi
     }
 }
 
-export function fetchEvents(query: EventsQuery, ctx: RequestContext): Promise<HazardEvent[]> {
+export interface EventsResult {
+    events: HazardEvent[];
+    // Set only when the canonical store answered from a subset of its storage units.
+    partial: boolean;
+    unavailable_units: string[];
+}
+
+export function fetchEvents(query: EventsQuery, ctx: RequestContext): Promise<EventsResult> {
     return timedCall(ctx, 'GET /internal/events', async () => {
-        const res = await http.get<{ events: HazardEvent[] }>('/internal/events', {
+        const res = await http.get<{ events: HazardEvent[]; partial?: boolean; unavailable_units?: string[] }>('/internal/events', {
             params: query,
             headers: { [CORRELATION_HEADER]: ctx.correlationId },
         });
-        return res.data.events;
+        return { events: res.data.events, partial: res.data.partial === true, unavailable_units: res.data.unavailable_units ?? [] };
     });
 }
 

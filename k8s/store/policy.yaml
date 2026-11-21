@@ -1,0 +1,16 @@
+# Storage ownership enforced by the platform: only the aggregator (role=aggregator) and other storage
+# components can open connections to storage pods. Kubelet probes are always allowed by NetworkPolicy semantics.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: store-ingress
+spec:
+  podSelector:
+    matchLabels: {bnpb.io/store: "true"}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {role: aggregator}}
+        - podSelector: {matchLabels: {bnpb.io/store: "true"}}
+      ports:
+        - {protocol: TCP, port: 27017}
