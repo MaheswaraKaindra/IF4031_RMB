@@ -80,6 +80,29 @@ const rawInbox = new MongoRawInbox(getMongoDb);
 const fieldReportOutbox = new MongoFieldReportOutbox(getMongoDb);
 
 let schemaRules: SchemaRulesConfig = defaultSchemaRules();
+let schemaRulesLoadedAt = 0;
+
+async function getActiveSchemaRules(forceRefresh = false): Promise<SchemaRulesConfig> {
+    if (!forceRefresh && Date.now() - schemaRulesLoadedAt < 2000) return schemaRules;
+    try {
+        const doc = await getMongoDb().collection<{ _id: string; rules: SchemaRulesConfig }>('ops_config').findOne({ _id: 'pvmbg_schema_rules' });
+        if (doc?.rules) schemaRules = doc.rules;
+        schemaRulesLoadedAt = Date.now();
+    } catch {
+        // Keep current in-memory rules if store is temporarily unreachable
+    }
+    return schemaRules;
+}
+
+async function saveSchemaRules(next: SchemaRulesConfig): Promise<void> {
+    schemaRules = next;
+    schemaRulesLoadedAt = Date.now();
+    await getMongoDb().collection<{ _id: string; rules: SchemaRulesConfig; updated_at: string }>('ops_config').updateOne(
+        { _id: 'pvmbg_schema_rules' },
+        { $set: { rules: next, updated_at: new Date().toISOString() } },
+        { upsert: true }
+    );
+}
 const polling = { BMKG: false, PVMBG: false };
 let shuttingDown = false;
 
@@ -552,13 +575,14 @@ async function pollPvmbg(): Promise<void> {
             return;
         }
 
+        const activeRules = await getActiveSchemaRules();
         let allCommitted = true;
         for (const raw of parsed.value) {
             if (!handle.isStillValid()) {
                 allCommitted = false;
                 break;
             }
-            const validated = validateAndMapPvmbgRecord(raw, schemaRules);
+            const validated = validateAndMapPvmbgRecord(raw, activeRules);
             if (!validated.ok) {
                 log.warn({ source_ref_id: validated.sourceRefId, reason: validated.reason }, 'PVMBG incompatible record parked');
                 await rawInbox.appendFailure({
@@ -626,9 +650,10 @@ async function processInboxRecord(item: RawInboxItem): Promise<{ ok: true } | { 
         return { ok: false, retryable: false, reason: parsed.reason };
     }
 
+    const activeRules = await getActiveSchemaRules();
     let event: HazardEvent | undefined;
     if (item.source === 'PVMBG') {
-        const mapped = validateAndMapPvmbgRecord(parsed.value, schemaRules);
+        const mapped = validateAndMapPvmbgRecord(parsed.value, activeRules);
         if (!mapped.ok) return { ok: false, retryable: false, reason: mapped.reason };
         event = mapped.value;
     } else if (item.source === 'BMKG') {
@@ -851,7 +876,7 @@ app.post('/internal/raw-ingest', express.raw({ type: '*/*', limit: MAX_PAYLOAD_B
     }
 
     if (source === 'PVMBG') {
-        const mapped = validateAndMapPvmbgRecord(parsed.value, schemaRules);
+        const mapped = validateAndMapPvmbgRecord(parsed.value, await getActiveSchemaRules());
         if (!mapped.ok) {
             const stored = await rawInbox.appendFailure({
                 source,
@@ -900,6 +925,7 @@ app.post('/internal/ops/unprocessed/replay', express.json(), async (req, res) =>
     const maxPerSec = typeof body['max_per_sec'] === 'number' && body['max_per_sec'] > 0 ? body['max_per_sec'] : REPLAY_MAX_PER_SEC;
 
     try {
+        await getActiveSchemaRules(true);
         const stats = await rawInbox.replay({ source, reason }, processInboxRecord, maxPerSec, INBOX_MAX_ATTEMPTS);
         res.json(stats);
     } catch (err) {
@@ -908,20 +934,22 @@ app.post('/internal/ops/unprocessed/replay', express.json(), async (req, res) =>
     }
 });
 
-app.get('/internal/ops/schema-rules', (_req, res) => {
-    res.json(schemaRules);
+app.get('/internal/ops/schema-rules', async (_req, res) => {
+    res.json(await getActiveSchemaRules(true));
 });
 
-app.post('/internal/ops/schema-rules', express.json(), (req, res) => {
+app.post('/internal/ops/schema-rules', express.json(), async (req, res) => {
+    const current = await getActiveSchemaRules(true);
     const body = (req.body ?? {}) as Partial<SchemaRulesConfig>;
-    schemaRules = {
-        enablePvmbgV2Compat: body.enablePvmbgV2Compat ?? schemaRules.enablePvmbgV2Compat,
-        fieldAliases: body.fieldAliases ?? (body.enablePvmbgV2Compat ? { mountain_code: 'volcano_id', status_level: 'alert_level' } : schemaRules.fieldAliases),
-        coerceNumericStrings: body.coerceNumericStrings ?? (body.enablePvmbgV2Compat ?? schemaRules.coerceNumericStrings),
-        defaults: body.defaults ?? schemaRules.defaults,
+    const next: SchemaRulesConfig = {
+        enablePvmbgV2Compat: body.enablePvmbgV2Compat ?? current.enablePvmbgV2Compat,
+        fieldAliases: body.fieldAliases ?? (body.enablePvmbgV2Compat ? { mountain_code: 'volcano_id', status_level: 'alert_level' } : current.fieldAliases),
+        coerceNumericStrings: body.coerceNumericStrings ?? (body.enablePvmbgV2Compat ?? current.coerceNumericStrings),
+        defaults: body.defaults ?? current.defaults,
     };
-    getLog(res).info({ schema_rules: schemaRules }, 'PVMBG schema rules updated by Internal Ops');
-    res.json(schemaRules);
+    await saveSchemaRules(next).catch((err) => getLog(res).warn({ error: errorMessage(err) }, 'Failed to persist schema rules'));
+    getLog(res).info({ schema_rules: next }, 'PVMBG schema rules updated by Internal Ops');
+    res.json(next);
 });
 
 // ---- Audit API (:3001) --------------------------------------------------------------------------
