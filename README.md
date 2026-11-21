@@ -329,19 +329,17 @@ Store berjalan di MongoDB **4.4** (bukan 7) karena VM VirtualBox-on-Hyper-V tida
 | 4 node + disk hilang: tidak ada HazardEvent hilang, jawaban tidak pernah 5xx/menggantung | `scripts/k8s/p1-node-loss.sh 1` (simulasi, PVC dihapus dan diverifikasi baru) atau `NODE_IP=<ip node lain> scripts/k8s/p1-node-loss.sh 1 --manual` (matikan VM / Tester Agent; probe lewat NodePort node yang selamat, daftar ID sebelum kehilangan disimpan) |
 | 4 jawaban partial eksplisit + 7 banner dashboard | `scripts/k8s/p1-unit-loss.sh 1` (satu shard utuh tidak terjangkau), lalu buka `/analytics` |
 | 5 node kosong bergabung | otomatis (resync); hasil terlihat di akhir `p1-node-loss.sh`. Mesin pengganti yang BERBEDA: `IDS_BEFORE=<file dari p1-node-loss> scripts/k8s/p1-replace-node.sh <slot> <node-baru> --delete-old-node` |
+| 4/5 jawaban dan penulisan terus berjalan | `VICTIM=node-d SURVIVOR_IP=<ip> scripts/k8s/p1-probe-loss.sh` (garis waktu probe saat power-off nyata); `scripts/k8s/p1-write-probe.sh <detik> "<perintah kegagalan>"` (satu POST /field-reports tiap 0,5 s, lalu memeriksa semua yang dijawab 202 tersimpan) |
 | 6 tahan kehilangan berikutnya | `scripts/k8s/p1-node-loss.sh 2` setelah yang pertama selesai |
 | 7 dashboard analitik | buka `http://<node>:30000/analytics`, masukkan token audit, tombol "Cocokkan dengan Audit API" |
 | bukti lokasi/sebaran | `scripts/k8s/p1-report.sh` |
 
-Batas yang diketahui saat satu node MATI (diukur pada 3 VM nyata, node-b dimatikan dengan `poweroff`): node dinyatakan NotReady setelah
-~48 s, pod stateless dipindah setelah ~68 s (toleransi 20 s di overlay demo, bukan 300 s bawaan). client-api, auth-service dan
-mongos masing-masing 2 replika di node berbeda (auth-service memakai `sessionAffinity: ClientIP`; klien yang replikanya mati cukup
-meminta `/token` lagi, dan `/token` tidak pernah gagal pada pengujian). Aggregator masih 1 replika (menunggu leader election P2,
-Owner B): ketika node yang mati memuatnya, Audit API dan `/events` gagal selama ~107 s (14 dari 181 probe 1 Hz gagal; `/events` menjawab
-`503` cepat, sebagian permintaan Audit API menggantung sampai batas waktu 5 s karena NodePort masih menuju endpoint yang mati), lalu
-semua jawaban kembali lengkap. Jawaban store sendiri tetap lengkap atau ditandai `partial` dan tidak ada data yang hilang
-(0 record hilang pada tiga uji). RabbitMQ (1 pod, StatefulSet) tidak dibuat ulang selama node-nya mati, dan setelah kehilangan permanen
-volumenya tidak dapat dipindah (HA broker = P3).
+Batas yang diketahui saat satu node MATI (diukur pada 3 VM nyata dengan `VBoxManage controlvm <node> poweroff`, bukti di `docs/evidence/pc-run-phase2.md`):
+node dinyatakan NotReady setelah ~16 s (`tune-failure-detection.sh`) dan sampai saat itu NodePort masih dapat mengirim sebagian permintaan ke pod di node yang mati
+(auth-service pada satu uji gagal dua kali). Aggregator berjalan dengan >=3 replika dan menjangkau kedua router mongos lewat nama SRV `mongos-direct` (driver
+memeriksa keduanya tiap detik), sehingga router yang mati tidak lagi dipilih. Probe Audit API dan client API per detik selama power-off nyata: 358 dari 360
+berhasil; kegagalan tersisa adalah pemindaian penuh `analytics`/`checksum` (2,4-6,6 s pada ~146.000 record). Penulisan laporan lapangan tetap diterima:
+264 dari 264 menjawab 202 dan semuanya tersimpan. `scripts/k8s/p1-probe-loss.sh` mencetak garis waktu probe, `scripts/k8s/p1-write-probe.sh` mengukur penulisan.
 
 Tanpa cluster: `cd aggregator && npm test` (14 tes: urutan lintas unit, cursor, partial, fencing, format checksum, kontrak Audit API terhadap referensi in-memory).
 Adapter MongoDB terhadap server asli (dibandingkan dengan referensi in-memory; database sementara, dihapus setelahnya):
@@ -365,7 +363,13 @@ yang gagal. Aksi pada VM dipasang lewat variabel lingkungan supaya tidak ada pat
 | P2.5 node freeze lalu bangun | `VM_PAUSE_CMD=... VM_RESUME_CMD=... p2-freeze.sh` | instance yang bangun berhenti menjadi leader, tidak menyimpan apa pun |
 | P2.6-P2.8 beban, scaling 3-5-2-3, rolling update, throughput 1 vs 3 | `p2-load.sh` (butuh k6; `VUS`, `RATE`) | tingkat error di luar 429 < 1%, rolling update tanpa permintaan gagal |
 | P3.1-P3.6 skema, pesan rusak, replay, Ops saja, 202 durable | `p3-checks.sh` | 33 pemeriksaan: ditolak/diparkir dengan alasan, salinan byte-identik dengan kiriman sumber, aturan skema dipakai SEMUA replika dan bertahan setelah restart pod, replay kedua tidak memulihkan apa pun lagi, 202 cepat saat broker mati dan semua aggregator dimatikan, tidak ada laporan hilang |
+| P3.4 urutan per `source_ref_id` pada replay | `p3-order.sh` | dua versi satu laporan diparkir lalu diputar ulang berurutan, versi pertama yang tak terbaca menahan versi berikutnya |
 | P4 umpan satelit asli (butuh `SATELLITE_GROUP_TOKEN`) | `SCENARIO=baseline\|kill-leader\|node-loss p4-checks.sh`; `satellite-tool.ts reference` | mengejar umpan, leader di-SIGKILL atau node dimatikan: pengambilalihan, epoch naik, log umpan kontigu tanpa celah/duplikat; hasil klaster dibandingkan dengan perhitungan ulang batch independen (0 hilang/lebih/beda) |
+| P4.8 koneksi umpan putus lalu tersambung | `p4-reconnect.sh` (`CUT_S=20`) | koneksi ke umpan di-reset pada node leader, pod sama tanpa restart, log umpan tetap utuh tanpa celah/duplikat |
+| P5.2 data melanggar kontrak disisihkan | `p5-quarantine.sh` | item rusak disuntikkan ke sensor palsu: masuk daftar Ops dengan alasan, tidak menjadi HazardEvent |
+| P5.3 beban M1 saat sensor sakit | `p5-m1-load.sh` | `load-test/events.js` (50 VU) pada mode sensor normal/slow/blackhole |
+| P5.5 Media dibatasi, Tim Lapangan dilayani | `k6 run -e FIELD_SECRET=... -e MEDIA_SECRET=... -e BASE_URL=http://<node>:30080 -e AUTH_URL=http://<node>:30090 -e MEDIA_VUS=100 load-test/p5-priority.js` | 429 hanya untuk Media; laporan lapangan diterima |
+| Kontrak Audit API (Lampiran A) | `audit-contract.sh` | 24 pemeriksaan: bentuk error, field, limit, pagination, urutan, filter, checksum dihitung ulang, location, unprocessed |
 | P5.1 alert kritis dari emisi sampai ACK | `SCENARIO=baseline\|kill-leader\|node-loss p5-latency.sh` | sensor palsu, 5 alert/detik, kegagalan disuntik saat alert mengalir: 0 hilang dan p95 dari saat emisi |
 | P1 katalog gempa | `store-tool catalog-gen` lalu `store-tool load --catalog berkas.jsonl\|csv` | katalog simulasi (Gutenberg-Richter, gempa susulan, zona panas) atau katalog nyata lewat pemetaan BMKG dan jalur ingest yang sama |
 | P5.3-P5.4 Sensor Pantai bermasalah | `p5-checks.sh` | 6 mode sensor palsu: sumber lain tetap < 300 ms, permintaan ke sensor tidak melonjak, pulih sendiri |
@@ -399,7 +403,9 @@ dibangkitkan dari PC ini (k6 membutuhkan >20 GB), sehingga hasil dilaporkan pada
 | `SENSOR_PANTAI_URL`, `COASTAL_POLL_INTERVAL_MS`, `COASTAL_TIMEOUT_MS` | `http://sensor-pantai:8080`, `1000`, `1500` | alamat dan jadwal poller pesisir |
 | `COASTAL_BREAKER_FAILURES` / `_WINDOW_MS` / `_OPEN_MS` / `_MAX_OPEN_MS` | `5` / `30000` / `2000` / `5000` | circuit breaker ke Sensor Pantai |
 | `COASTAL_STALE_LAG_SEC`, `COASTAL_LEASE_DURATION_SEC` | `120`, `8` | batas data sensor dianggap basi dan Lease poller pesisir |
-| `MAX_IN_FLIGHT` | `100` per replika client-api | batas permintaan bersamaan; Tim Lapangan didahulukan dari Media |
+| `MAX_IN_FLIGHT` / `RESERVED_FIELD_TEAM` / `MEDIA_MAX_IN_FLIGHT` | `100` / `40` / `30` per replika client-api | batas permintaan bersamaan, slot yang hanya boleh dipakai Tim Lapangan, dan batas Media; yang melewati batas dijawab 429 |
+| `AGGREGATOR_TIMEOUT_MS` / `FIELD_REPORT_RETRY_TIMEOUT_MS` | `2000` / `3000` | batas panggilan client-api ke aggregator; percobaan kedua untuk laporan lapangan yang belum terjawab (aman: idempotensi) |
+| `MONGO_URI` / `MONGO_URI_PLAIN` | `mongodb+srv://...@mongos-direct...` / `mongodb://...@mongos:27017/...` | aggregator memakai nama SRV (driver melihat kedua router mongos); init container memakai URI biasa karena shell `mongo` 4.4 tidak mendukung SRV |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://jaeger:4318` | tujuan span OTLP |
 
 ### Batasan saat ini
@@ -409,7 +415,7 @@ dibangkitkan dari PC ini (k6 membutuhkan >20 GB), sehingga hasil dilaporkan pada
 - Pipeline satelit (P4) aktif saat `SATELLITE_GROUP_TOKEN` diisi. Pengujian umpan asli, SIGKILL leader, dan kehilangan node tercatat di [bukti fase 2](docs/evidence/pc-run-phase2.md).
 - Tester Agent: skenario `schema` lulus. Skenario yang menyasar pod/node (`kill-leader`, `kill-store`, `wipe-node`, `clock-skew`, `partition`) tidak menemukan sasaran karena ketiga node adalah server k3s (control-plane) dan agen hanya menyasar node worker kecuali diizinkan; perlu keputusan topologi (node B/C sebagai agent) atau cara mengizinkan.
 - Kapasitas jalur baca sekitar 100-150 req/s pada 3 VM satu PC (lihat di atas); 10.000 VU tidak tercapai.
-- Observability: metrik dan jejak ada untuk aggregator, client-api, auth, consumer, serta metrik RabbitMQ dan MongoDB per shard; mock, store, broker, dan sensor belum menghasilkan span.
+- Observability: metrik dan jejak ada untuk aggregator, client-api, auth, consumer, serta metrik RabbitMQ dan MongoDB per shard; penulisan ke store dan publish ke broker kini berupa span sendiri (satu permintaan terlihat di semua hop, lihat `docs/observability.md`); mock, MongoDB, RabbitMQ, dan image sensor sendiri tidak menghasilkan span.
 - Skrip `scripts/p2..p4` dan `script-ps-*` hanya untuk Docker Compose.
 
 Lihat [deviasi Milestone 2](docs/deviations.md) dan [SLO layanan pesisir](docs/slo.md).
