@@ -186,3 +186,9 @@ The poll-driven critical alert path was not re-traced in this run. Its `store in
 - **Key B** (the first version stays unreadable after the rule change: `alert_level` not a level): neither version processed, no event stored; the replay answered `scanned 16, recovered 2, blocked_by_key 1, still_failed 13` (the other 12 failed messages are the earlier real parked PVMBG messages).
 - The script removes its own `ORD-` test messages and events and turns the schema rule off again. Two earlier aborted runs of the script (the tool did not exit) had left one `ORD-` key behind; it was removed with `inbox-tool purge`, and a final count shows no `ORD-` message or event left.
 - A new field `processed_at` is stored on every inbox message when it is marked processed (`MongoRawInbox.markProcessed`).
+
+## P5 refused field report: cause and change, 2026-11-22 (P5 criterion 5)
+
+Cause (from the earlier diagnosis above): under the Media flood the aggregator sometimes answered `POST /internal/field-reports` later than client-api's 2 s limit although the report was already stored and published, so the client received HTTP 503 for a report the system had accepted. Not an admission-control defect (no Tim Lapangan request got a 429).
+
+Change: client-api now repeats that POST once (3 s limit, `FIELD_REPORT_RETRY_TIMEOUT_MS`) after a timeout or a broken connection. This is safe because the aggregator stores a report under its idempotency key, so a repeat is answered 202 `duplicate` (`client-api/src/retry.ts`, 3 unit tests). **Not verified under load:** the priority test was not re-run after the change (the user will run it together with the report screenshots), so it is not shown that the 503s are gone.
