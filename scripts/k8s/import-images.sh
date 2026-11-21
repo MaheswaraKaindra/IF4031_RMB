@@ -8,6 +8,8 @@ set -euo pipefail
 [ $# -ge 1 ] || { echo "usage: $0 <ssh-host> [<ssh-host>...]" >&2; exit 1; }
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 SERVICES=(aggregator client-api auth-service consumers mock-bmkg mock-pvmbg)
+# ONLY="aggregator client-api" imports just those images (the rest stay as they are on the nodes).
+[ -z "${ONLY:-}" ] || read -r -a SERVICES <<< "$ONLY"
 ARCH=${ARCH:-amd64}
 REGISTRY=${REGISTRY:-local.import}
 TAG=${TAG:-demo}
@@ -17,7 +19,11 @@ trap 'rm -rf "$(dirname "$TAR")"' EXIT
 imgs=()
 for s in "${SERVICES[@]}"; do
   img="$REGISTRY/bnpb/$s:$TAG"
-  docker buildx build --platform "linux/$ARCH" --load -t "$img" "$ROOT/$s"
+  if docker buildx version >/dev/null 2>&1; then
+    docker buildx build --platform "linux/$ARCH" --load -t "$img" "$ROOT/$s"
+  else
+    docker build --platform "linux/$ARCH" -t "$img" "$ROOT/$s"   # no buildx plugin: the classic builder is enough for the host architecture
+  fi
   imgs+=("$img")
 done
 docker save --platform "linux/$ARCH" "${imgs[@]}" -o "$TAR" 2>/dev/null || docker save "${imgs[@]}" -o "$TAR"

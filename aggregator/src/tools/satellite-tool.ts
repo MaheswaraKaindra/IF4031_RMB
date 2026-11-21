@@ -4,6 +4,7 @@
 //   node --import tsx src/tools/satellite-tool.ts export [--db p4_bench] [--out fires.json]
 //   node --import tsx src/tools/satellite-tool.ts report [--db p4_bench]
 //   node --import tsx src/tools/satellite-tool.ts failover [--db p4_failover] [--seconds 40]   two instances share the SATELIT lease; the leader is stopped midway
+//   node --import tsx src/tools/satellite-tool.ts reference [--db p4_bench] [--lateness 360] [--out diff.json]   compare Mongo with an INDEPENDENT batch recomputation of the fires from the feed log
 //   node --import tsx src/tools/satellite-tool.ts verify [--db p4_bench] [--lateness 360]   compare Mongo with an independent replay of the feed log
 // Env: MONGO_URI (default mongodb://127.0.0.1:27018), SATELLITE_BASE_URL, SATELLITE_GROUP_TOKEN.
 import { writeFileSync } from 'node:fs';
@@ -20,6 +21,7 @@ import { MongoFeedLog } from '../satellite/feed/log.js';
 import { MongoLateStore } from '../satellite/processing/lateStore.js';
 import { fireToHazard } from '../satellite/clustering/hazardMapping.js';
 import { SatelliteProcessor } from '../satellite/processing/processor.js';
+import { computeReference, diffAgainstStored, type LogEntry, type RefFire } from '../satellite/reference.js';
 import type { MetricsLike } from '../satellite/metrics.js';
 import { runSatelliteProcessing, SATELLITE_PARTITION, SATELLITE_SOURCE } from '../satellite/processing/runner.js';
 
@@ -64,8 +66,9 @@ async function main(): Promise<void> {
         else if (cmd === 'export') await exportFires(repo);
         else if (cmd === 'report') await report(repo, db);
         else if (cmd === 'verify') await verify(repo, db);
+        else if (cmd === 'reference') await referenceDiff(repo, db);
         else if (cmd === 'failover') await failover(client, repo, dbName);
-        else console.error('usage: run | export | report');
+        else console.error('usage: run | export | report | verify | reference | failover');
     } finally {
         await repo.close().catch(() => undefined);
         await client.close();
@@ -266,6 +269,52 @@ async function verify(repo: MongoCanonicalRepository, db: import('mongodb').Db):
     const ok = missing.length + extra.length + different.length === 0;
     console.log(JSON.stringify({ ok, committed_offset: committed, log_tail: tail, expected_fires: expected.size, stored_fires: actual.size, in_flight_excluded: skipped, missing, extra, different }, null, 2));
     if (!ok) process.exitCode = 1;
+}
+
+/**
+ * Reference diff. verify replays the log through the same processor code as the pipeline; this one recomputes the fires with a
+ * separate batch algorithm (reference.ts) and compares them with what is stored, so a bug in the incremental bookkeeping shows up.
+ * The store is read between two checkpoints of the log: fires whose reference changes between them are in flight and skipped.
+ */
+async function referenceDiff(repo: MongoCanonicalRepository, db: import('mongodb').Db): Promise<void> {
+    const cp = await new MongoCheckpointStore(() => db).get(SATELLITE_SOURCE, SATELLITE_PARTITION);
+    const committed = cp ? Number(cp.committed_offset) : -1;
+    const stored = (await allFires(repo)).filter((f) => f.hazard_type === 'WILDFIRE');
+    const log = new MongoFeedLog(() => db);
+    const tail = await log.tail();
+    const entries: LogEntry[] = [];
+    for (let from = 0; from <= tail; ) {
+        const page = await log.read(from, 5000);
+        if (page.length === 0) break;
+        for (const e of page) if (e.offset <= tail) entries.push({ offset: e.offset, kind: e.kind, raw: e.raw });
+        from = page[page.length - 1]!.offset + 1;
+    }
+    const lateness = Number(flag('lateness', '360')) * 60_000;
+    const atCommit = computeReference(entries.filter((e) => e.offset <= committed), lateness);
+    const atTail = computeReference(entries, lateness);
+    const inFlight = new Set<string>();
+    const same = (a: RefFire | undefined, b: RefFire | undefined): boolean => JSON.stringify(a) === JSON.stringify(b);
+    for (const id of new Set([...atCommit.fires.keys(), ...atTail.fires.keys()])) if (!same(atCommit.fires.get(id), atTail.fires.get(id))) inFlight.add(id);
+    const diff = diffAgainstStored(atCommit.fires, stored, inFlight);
+    const result = {
+        ok: diff.ok,
+        committed_offset: committed,
+        log_tail: tail,
+        reference_fires: atCommit.fires.size,
+        stored_fires: stored.length,
+        in_flight_skipped: inFlight.size,
+        reference_counters: { detections_kept: atCommit.detections, low_confidence: atCommit.low_confidence, singletons: atCommit.singletons, late: atCommit.late, retracted: atCommit.retracted, invalid: atCommit.invalid, unknown_corrections: atCommit.unknown_corrections },
+        missing: diff.missing.slice(0, 50),
+        missing_total: diff.missing.length,
+        extra: diff.extra.slice(0, 50),
+        extra_total: diff.extra.length,
+        different: diff.different.slice(0, 50),
+        different_total: diff.different.length,
+    };
+    const out = flag('out');
+    if (out) writeFileSync(out, JSON.stringify(result, null, 2));
+    console.log(JSON.stringify(result, null, 2));
+    if (!diff.ok) process.exitCode = 1;
 }
 
 async function report(repo: MongoCanonicalRepository, db: import('mongodb').Db): Promise<void> {
