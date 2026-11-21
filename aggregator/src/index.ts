@@ -32,11 +32,11 @@ import { MongoCheckpointStore } from './coordination/checkpoints.js';
 import { SourceLeaderManager, type LeaderLeaseHandle } from './coordination/leaderLoop.js';
 import { parseBoundedRawJson } from './p3/boundedJson.js';
 import {
-    defaultSchemaRules,
     validateAndMapBmkgRecord,
     validateAndMapPvmbgRecord,
     type SchemaRulesConfig,
 } from './p3/schemaValidator.js';
+import { MongoRulesBackend, SchemaRulesStore } from './p3/schemaRulesStore.js';
 import { computeBackoffWithJitter, MongoRawInbox, type RawInboxItem } from './p3/rawInbox.js';
 import { CoastalService, coastalEnv } from './coastal/service.js';
 import { MongoDeliveryLedger, RECEIVER } from './coastal/ledger.js';
@@ -108,7 +108,7 @@ const rawInbox = new MongoRawInbox(getMongoDb);
 const fieldReportOutbox = new MongoFieldReportOutbox(getMongoDb);
 const deliveryLedger = new MongoDeliveryLedger(getMongoDb);
 
-let schemaRules: SchemaRulesConfig = defaultSchemaRules();
+const schemaRulesStore = new SchemaRulesStore(new MongoRulesBackend(getMongoDb));
 const polling = { BMKG: false, PVMBG: false };
 let shuttingDown = false;
 
@@ -587,7 +587,7 @@ async function pollPvmbg(): Promise<void> {
                 allCommitted = false;
                 break;
             }
-            const validated = validateAndMapPvmbgRecord(raw, schemaRules);
+            const validated = validateAndMapPvmbgRecord(raw, schemaRulesStore.current());
             if (!validated.ok) {
                 log.warn({ source_ref_id: validated.sourceRefId, reason: validated.reason }, 'PVMBG incompatible record parked');
                 await rawInbox.appendFailure({
@@ -657,7 +657,7 @@ async function processInboxRecord(item: RawInboxItem): Promise<{ ok: true } | { 
 
     let event: HazardEvent | undefined;
     if (item.source === 'PVMBG') {
-        const mapped = validateAndMapPvmbgRecord(parsed.value, schemaRules);
+        const mapped = validateAndMapPvmbgRecord(parsed.value, schemaRulesStore.current());
         if (!mapped.ok) return { ok: false, retryable: false, reason: mapped.reason };
         event = mapped.value;
     } else if (item.source === 'BMKG') {
@@ -880,7 +880,7 @@ app.post('/internal/raw-ingest', express.raw({ type: '*/*', limit: MAX_PAYLOAD_B
     }
 
     if (source === 'PVMBG') {
-        const mapped = validateAndMapPvmbgRecord(parsed.value, schemaRules);
+        const mapped = validateAndMapPvmbgRecord(parsed.value, schemaRulesStore.current());
         if (!mapped.ok) {
             const stored = await rawInbox.appendFailure({
                 source,
@@ -929,6 +929,7 @@ app.post('/internal/ops/unprocessed/replay', express.json(), async (req, res) =>
     const maxPerSec = typeof body['max_per_sec'] === 'number' && body['max_per_sec'] > 0 ? body['max_per_sec'] : REPLAY_MAX_PER_SEC;
 
     try {
+        await schemaRulesStore.refresh();
         const stats = await rawInbox.replay({ source, reason }, processInboxRecord, maxPerSec, INBOX_MAX_ATTEMPTS);
         res.json(stats);
     } catch (err) {
@@ -960,20 +961,21 @@ app.post('/internal/deliveries/ack', express.json({ limit: '4kb' }), async (req,
     }
 });
 
-app.get('/internal/ops/schema-rules', (_req, res) => {
-    res.json(schemaRules);
+app.get('/internal/ops/schema-rules', async (_req, res) => {
+    await schemaRulesStore.refresh();
+    res.json(schemaRulesStore.current());
 });
 
-app.post('/internal/ops/schema-rules', express.json(), (req, res) => {
+app.post('/internal/ops/schema-rules', express.json(), async (req, res) => {
     const body = (req.body ?? {}) as Partial<SchemaRulesConfig>;
-    schemaRules = {
-        enablePvmbgV2Compat: body.enablePvmbgV2Compat ?? schemaRules.enablePvmbgV2Compat,
-        fieldAliases: body.fieldAliases ?? (body.enablePvmbgV2Compat ? { mountain_code: 'volcano_id', status_level: 'alert_level' } : schemaRules.fieldAliases),
-        coerceNumericStrings: body.coerceNumericStrings ?? (body.enablePvmbgV2Compat ?? schemaRules.coerceNumericStrings),
-        defaults: body.defaults ?? schemaRules.defaults,
-    };
-    getLog(res).info({ schema_rules: schemaRules }, 'PVMBG schema rules updated by Internal Ops');
-    res.json(schemaRules);
+    try {
+        const rules = await schemaRulesStore.update(body);
+        getLog(res).info({ schema_rules: rules }, 'PVMBG schema rules updated by Internal Ops');
+        res.json(rules);
+    } catch (err) {
+        getLog(res).error({ error: errorMessage(err) }, 'schema rules not saved');
+        res.status(503).json({ error: 'Canonical Store unavailable, schema rules not changed' });
+    }
 });
 
 // ---- Audit API (:3001) --------------------------------------------------------------------------
@@ -1007,6 +1009,7 @@ const server = app.listen(PORT, async () => {
             await new Promise((resolve) => setTimeout(resolve, Math.min(2000 * attempt, 10_000)));
         }
     }
+    schemaRulesStore.start();
 
     await initRabbitMQ();
 
