@@ -26,4 +26,22 @@ for pair in "mock-bmkg:aggregator-poller-bmkg" "mock-pvmbg:aggregator-poller-pvm
   [ "$(printf '%s\n' "$logs" | grep . | sort -u)" = "$holder" ] && pass "$mock: the caller is the Lease holder ($holder)" || fail "$mock: caller is not the Lease holder ($holder)"
   [ "$n" -le "$max" ] && pass "$mock: $n polls in ${WINDOW}s (not multiplied, limit $max)" || fail "$mock: $n polls in ${WINDOW}s exceeds $max"
 done
+
+echo ">>> every source has exactly one leader, and the satellite feed and the coastal sensor have exactly one caller"
+PODS=$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=aggregator -o jsonpath='{.items[*].metadata.name}')
+pod_metrics() { kubectl -n "$NS" exec "$1" -c aggregator -- wget -qO- -T 3 http://127.0.0.1:3000/metrics 2>/dev/null; }
+for p in $PODS; do pod_metrics "$p" > "$tmp/m1.$p" || true; done
+sleep 20
+for p in $PODS; do pod_metrics "$p" > "$tmp/m2.$p" || true; done
+for src in BMKG PVMBG SATELIT SENSOR_PANTAI; do
+  leaders=$(for p in $PODS; do awk -v s="aggregator_is_leader{source=\"$src\"}" '$1==s {print $2}' "$tmp/m2.$p"; done | awk '$1==1' | wc -l | tr -d ' ')
+  [ "$leaders" = 1 ] && pass "$src: exactly one pod reports itself leader ($leaders of $(echo $PODS | wc -w))" || fail "$src: $leaders pods report themselves leader"
+done
+# coastal sensor: only the leader's request counter moves
+movers=0; for p in $PODS; do a=$(awk '/^coastal_sensor_requests_total/ {s+=$NF} END{print s+0}' "$tmp/m1.$p"); b=$(awk '/^coastal_sensor_requests_total/ {s+=$NF} END{print s+0}' "$tmp/m2.$p"); [ "$(awk -v a="$a" -v b="$b" 'BEGIN{print (b>a)}')" = 1 ] && movers=$((movers + 1)); done
+[ "$movers" = 1 ] && pass "SENSOR_PANTAI: exactly one pod sent requests to the sensor in 20 s" || fail "SENSOR_PANTAI: $movers pods sent requests to the sensor in 20 s"
+# satellite: only the leader holds the stream (its processing counters move and the session monitor gauges exist on one pod)
+holders=0; for p in $PODS; do grep -q '^satellite_source_latest_offset ' "$tmp/m2.$p" && holders=$((holders + 1)); done
+if [ "$holders" = 0 ]; then echo "SKIP: SATELIT pipeline is off (no SATELLITE_GROUP_TOKEN in the secret)"
+else [ "$holders" = 1 ] && pass "SATELIT: exactly one pod holds the feed connection ($holders)" || fail "SATELIT: $holders pods report feed state (more than one stream open)"; fi
 finish
