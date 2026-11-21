@@ -8,7 +8,7 @@
 set -euo pipefail
 source "$(dirname "$0")/assert-lib.sh"
 LIMIT=${TAKEOVER_LIMIT_S:-60}; SETTLE=${SETTLE_S:-60}
-LEASES=${LEASES:-aggregator-poller-bmkg aggregator-poller-pvmbg}
+LEASES=${LEASES:-aggregator-poller-bmkg aggregator-poller-pvmbg aggregator-satellite aggregator-coastal}   # all four leased sources; only those led from the victim node are timed
 tmp=$(mktemp -d); VICTIM=""; STOPPED=0
 restore() {
   cleanup_pf
