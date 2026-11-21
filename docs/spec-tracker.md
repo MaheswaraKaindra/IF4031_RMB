@@ -80,7 +80,7 @@ Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
 |---|---|---|---|---|---|
 | G.1 | Kubernetes platform: nodes, namespaces, resources, isolation, NetworkPolicy, secrets | Yes | PASS | `verify-resources.sh`, `verify-isolation.sh`, `smoke.sh` | Script output |
 | G.2 | Observability: dashboards for latency, throughput, error rate per service; trace with duration per hop; structured logs with correlation ID | Dashboards and logs yes; trace through every hop now yes | PASS* (see 5.7) | `docs/observability.md` | Dashboard, trace and log screenshots |
-| G.3 | Audit API contract (Appendix A): error shape, default limit, partial flag, checksum | Used throughout; no dedicated contract check run | NOT TESTED as a dedicated check | `aggregator/src/storage/routes.ts` | Contract check output |
+| G.3 | Audit API contract (Appendix A): error shape, default limit, partial flag, checksum | Yes: 24 checks (errors, fields, limits, pagination, order, filters, checksum recomputed, location, unprocessed) | PASS* (`detection_keys` format and the 403 case not checked) | `audit-contract.sh` | Contract check output |
 | G.4 | Tester Agent can target the cluster (spec: 3 or more nodes may allow control-plane targets) | Not possible yet; the mechanism is unknown | WAITING (ask the assistants) | `install-tester-agent.sh` | Practice-run output |
 | G.5 | Bonus HPA (5 points; code and report both required) | No | NOT TESTED / optional | - | HPA scale-up and scale-down evidence |
 
@@ -99,6 +99,6 @@ Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
 1. P2 criteria 6-8 (10,000 VU, 3x vs 1x, version swap): the kind run, last.
 2. Browser check of 1.7.
 3. Nothing further on P5.5 unless priority handling is added inside the aggregator.
-4. G.3 contract check, G.5 bonus (optional).
+4. G.5 bonus (optional).
 5. README completeness.
 6. After the deadline: official catalog, checksum, reference, Audit credential, Tester Agent key, load-test script; node-loss p95 for 5.1 stays a documented limit.
