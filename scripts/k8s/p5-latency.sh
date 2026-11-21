@@ -70,13 +70,17 @@ case $SCENARIO in
 esac
 wait "$EMIT" || true; cat "$tmp/emit.out"
 FAILED_AT=$(date -u +%FT%TZ)
-echo ">>> waiting 40 s for the last alerts to be delivered"; sleep 40
-# the mongos the port-forward was bound to may have been on the lost node: bind a new one before reading the ledger
-kill "$PF_MONGO" 2>/dev/null || true
-kubectl -n "$NS" port-forward svc/mongos 27018:27017 >/dev/null 2>&1 & PF_MONGO=$!; PFS+=($PF_MONGO); sleep 4
-newl=$(lease_holder aggregator-coastal); echo "coastal leader now: $newl (leadership changes seen: $([ "$newl" = "$leader" ] && echo no || echo yes))"
+echo ">>> waiting for the last alerts to be delivered (up to ${COMPLETE_MAX_S:-240} s)"
+sleep 20
 cd "$ROOT/aggregator"
-"${TOOL[@]}" latency --emitted "$tmp/emitted.json" --deadline "$DEADLINE" > "$tmp/latency.json" || true
+T_END=$SECONDS
+while :; do
+  "${TOOL[@]}" latency --emitted "$tmp/emitted.json" --deadline "$DEADLINE" > "$tmp/latency.json" 2>/dev/null || true
+  [ -s "$tmp/latency.json" ] && [ "$(jq '.not_in_ledger + .not_delivered' "$tmp/latency.json" 2>/dev/null || echo 1)" = 0 ] && break
+  [ $(( SECONDS - T_END )) -ge "${COMPLETE_MAX_S:-240}" ] && break
+  sleep 10
+done
+echo "time from the end of emission until every alert was delivered, or until we gave up: $(( SECONDS - T_END + 20 )) s"
 cat "$tmp/latency.json"
 # Evidence for a failed run: what every surviving aggregator pod logged about the coastal pipeline since the failure was injected
 if [ "$(jq '.not_in_ledger + .not_delivered' "$tmp/latency.json")" != 0 ]; then
@@ -94,6 +98,28 @@ for l in sys.stdin:
     seen[k][1]+=1
 for k,v in seen.items(): print('  ',v[0],'x%d'%v[1],k)
 " | head -25; } || true
+  done
+fi
+if [ "$(jq '.not_in_ledger + .not_delivered' "$tmp/latency.json")" != 0 ]; then
+  echo ">>> consumer and broker log lines since the failure (condensed):"
+  for d in consumer-notifier; do
+    for p in $(kubectl -n "$NS" get pods -l "app.kubernetes.io/name=$d" -o jsonpath='{.items[*].metadata.name}'); do
+      echo "== $p ($(pod_node "$p" || echo unknown))"
+      { kubectl -n "$NS" logs "$p" --since-time="$T_FAIL" 2>/dev/null | python3 -c "
+import sys,json
+seen={}
+for l in sys.stdin:
+    try: d=json.loads(l)
+    except: d={'msg':l.strip()[:90]}
+    k=(str(d.get('msg'))[:90],str(d.get('error',''))[:60]); 
+    if k not in seen: seen[k]=[str(d.get('time',''))[11:19],0]
+    seen[k][1]+=1
+for k,v in list(seen.items())[:12]: print('  ',v[0],'x%d'%v[1],k)
+"; } || true
+    done
+  done
+  for p in rabbitmq-0 rabbitmq-1 rabbitmq-2; do
+    echo "== $p"; { kubectl -n "$NS" logs "$p" --since-time="$T_FAIL" 2>/dev/null | grep -iE "node down|nodedown|leader|election|closing AMQP|partition|quorum" | cut -c1-170 | head -6; } || true
   done
 fi
 lost=$(jq '.not_in_ledger + .not_delivered' "$tmp/latency.json"); p95=$(jq '.p95_ms' "$tmp/latency.json"); miss=$(jq '.deadline_misses' "$tmp/latency.json")

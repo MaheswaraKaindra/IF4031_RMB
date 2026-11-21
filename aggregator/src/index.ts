@@ -31,6 +31,7 @@ import { fencedIngest, MongoSourceFenceStore } from './coordination/fencing.js';
 import { MongoCheckpointStore } from './coordination/checkpoints.js';
 import { SourceLeaderManager, type LeaderLeaseHandle } from './coordination/leaderLoop.js';
 import { parseBoundedRawJson } from './p3/boundedJson.js';
+import { sinceWithOverlap } from './p3/pollCursor.js';
 import {
     validateAndMapBmkgRecord,
     validateAndMapPvmbgRecord,
@@ -66,6 +67,7 @@ const LEASE_RENEW_DEADLINE_MS = parseInt(process.env.LEASE_RENEW_DEADLINE_SEC ||
 const LEASE_RETRY_PERIOD_MS = parseInt(process.env.LEASE_RETRY_PERIOD_SEC || '3', 10) * 1000;
 const MAX_PAYLOAD_BYTES = parseInt(process.env.MAX_PAYLOAD_BYTES || '262144', 10); // 256 KiB
 const MAX_JSON_DEPTH = parseInt(process.env.MAX_JSON_DEPTH || '32', 10);
+const POLL_OVERLAP_MS = parseInt(process.env.POLL_OVERLAP_SEC || '120', 10) * 1000; // see p3/pollCursor.ts
 const INBOX_MAX_ATTEMPTS = parseInt(process.env.INBOX_MAX_ATTEMPTS || '5', 10);
 const REPLAY_MAX_PER_SEC = parseInt(process.env.REPLAY_MAX_PER_SEC || '50', 10);
 
@@ -393,7 +395,7 @@ async function pollBmkg(): Promise<void> {
     polling.BMKG = true;
     try {
         const cp = await checkpointStore.get('BMKG', 'default');
-        const sinceCursor = cp?.committed_offset ?? new Date(0).toISOString();
+        const sinceCursor = sinceWithOverlap(cp?.committed_offset ?? new Date(0).toISOString(), POLL_OVERLAP_MS);
         const fetchTime = new Date().toISOString();
 
         const headers = {
@@ -530,7 +532,7 @@ async function pollPvmbg(): Promise<void> {
     polling.PVMBG = true;
     try {
         const cp = await checkpointStore.get('PVMBG', 'default');
-        const sinceCursor = cp?.committed_offset ?? new Date(0).toISOString();
+        const sinceCursor = sinceWithOverlap(cp?.committed_offset ?? new Date(0).toISOString(), POLL_OVERLAP_MS);
         const fetchTime = new Date().toISOString();
 
         let rawBuf: Buffer;

@@ -63,6 +63,13 @@ while :; do body=$(audit "/internal/audit/events?limit=1000${cursor:+&cursor=$cu
   jq -r '.items[] | "\(.source)|\(.source_ref_id)"' <<<"$body" >> "$tmp/all"; cursor=$(jq -r '.next_cursor // empty' <<<"$body"); [ -z "$cursor" ] && break; done
 dups=$(LC_ALL=C sort "$tmp/all" | uniq -d | wc -l | tr -d ' ')
 [ "$dups" = 0 ] && pass "no duplicate HazardEvent after the clock changes" || fail "$dups duplicate HazardEvent(s)"
+# gap check: every event the BMKG mock produced must be stored. A poller whose clock ran ahead used to write a cursor in the future and skip events.
+kubectl -n "$NS" port-forward svc/mock-bmkg 18081:8081 >/dev/null 2>&1 & mpf=$!; sleep 3
+curl -s -m 10 -H "X-BMKG-Key: $(envget X_BMKG_KEY)" localhost:18081/seismic-events | jq -r '.[].event_id' | sed 's/^/BMKG|/' | LC_ALL=C sort -u > "$tmp/mock"
+kill "$mpf" 2>/dev/null; wait "$mpf" 2>/dev/null || true
+LC_ALL=C sort -u "$tmp/all" > "$tmp/after"; missing=$(LC_ALL=C comm -23 "$tmp/mock" "$tmp/after" | wc -l | tr -d ' ')
+[ "$(wc -l < "$tmp/mock" | tr -d ' ')" -gt 0 ] || fail "the mock reported no events: the gap check had no data"
+[ "$missing" = 0 ] && pass "every event the BMKG mock produced ($(wc -l < "$tmp/mock" | tr -d ' ')) is stored: no gap under clock shifts" || fail "$missing mock event(s) never reached the store (a clock shift caused a data gap)"
 stale=$(for p in $(kubectl -n "$NS" get pods -l app.kubernetes.io/name=aggregator -o jsonpath='{.items[*].metadata.name}'); do kubectl -n "$NS" logs "$p" -c aggregator --since-time="$T0_ISO" 2>/dev/null | grep -c 'stale_epoch\|stale epoch\|fenced' || true; done | paste -sd+ | bc)
 echo "fenced/stale-epoch rejections logged: ${stale:-0}"
 [ "$trans_leader" -le 4 ] && pass "the drifting leader clock caused $trans_leader leadership change(s) (before the monotonic-clock fix it caused 10 in 3 minutes)" || fail "the drifting leader clock caused $trans_leader leadership changes"
