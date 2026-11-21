@@ -143,3 +143,9 @@ A read-only recheck counted all 50,000 catalog records and zero synthetic-prefix
 The first four-node kind setup timed out waiting for `job/store-init`. Its initial replica-set initiation saw two config-member DNS names missing. The retry waited for all 12 MongoDB members before creating the bootstrap Job and passed initialization. The benchmark wrapper was interrupted before a usable k6 result was recovered. On inspection, the isolated cluster had multiple unready pods and kube-proxy logged `fsnotify watcher init: too many open files`. There is no new throughput ratio or 10,000-VU result. kind uses a shared kernel and is suitable for rehearsal evidence.
 
 Further tuning of the P5 coastal node-loss latency was deferred by the user. The measured 34 s p95 and zero lost alerts remain recorded above.
+
+### P5 priority with fixed replica counts
+
+A focused 40 s retest pinned the aggregator at 3 replicas and client-api at 2, with 100 Media read VUs, 10 Tim Lapangan read VUs, and 3 field-report VUs. Both original HPA ranges were restored afterward. Media received 1,745 HTTP 429s. All 339 Tim Lapangan reads returned HTTP 200, with p95 1.831 s. Of 88 field-report POSTs, 87 returned HTTP 202 and one returned HTTP 503. k6 exited 99 after the read-latency and report-acceptance thresholds were crossed.
+
+The failing report `k6-45-4-1795272290863` correlated with a client-api call to `POST /internal/field-reports` that failed with `timeout of 2000ms exceeded` (2,016 ms logged). A read-only lookup found the report in MongoDB's field-report outbox and canonical hazards, with the outbox marked published. The report for the earlier identifiable 503 (`k6-10-8-1795266383259`) was also present in both collections and marked published. The second earlier refusal still lacks a matching ID. The reproduced failure is a missing HTTP acknowledgement despite durable storage, with zero Tim Lapangan HTTP 429s observed in this run.
