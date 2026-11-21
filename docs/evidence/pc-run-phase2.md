@@ -266,3 +266,17 @@ Change: client-api now repeats that POST once (3 s limit, `FIELD_REPORT_RETRY_TI
 - **Criterion 7, uncapped:** NOT met on this hardware. One aggregator reached about 114 req/s (90 VUs) and three reached 91-103 req/s: the three VMs share one PC's CPU, and the aggregator is not the bottleneck (the path through NodePort, client-api and the store is).
 - **Criterion 7, with a CPU limit of 250 m per aggregator pod** (a test-only setting, removed again; Appendix B makes CPU limits optional): at saturation, 1 instance gave 12 successful req/s (68% failures) at 80 VUs and 4 req/s (74% failures) at 40 VUs, and 3 instances gave 51 req/s (9% failures) and 39 req/s (2.5% failures): successful-throughput ratios of 4.3x and 9.8x. At 20 VUs, where the client's think time limits the offered load, the ratio was only 1.5x (17.8 vs 27 req/s). The ratio is large because the single capped instance fails most requests; the report must state the cap and these failure rates.
 - **Restored:** no CPU limit on the aggregator, HPAs for aggregator and client-api back.
+
+## Trace of a coastal critical alert, 2026-11-22 (Observability, P5 criterion 7)
+
+`SCENARIO=baseline N=30 RATE=5 p5-latency.sh`: 30 of 30 delivered, p95 1,785 ms. Jaeger trace `f00bbc2c8746cd33932aa392d422bba6` (offsets in ms from the first span; durations in ms; several alerts of the same poll share the trace):
+
+| Start | Duration | Service | Span | Parent |
+|---:|---:|---|---|---|
+| 0 | 494 | aggregator | `poll sensor-pantai` | none |
+| 82-89 | 225-270 | aggregator | `coastal critical ingest` (8 alerts, includes the ledger and store write) | poll |
+| 450 | 64 | aggregator | `relay critical` (broker publish) | ingest |
+| 479 | 45 | consumer-notifier | `consume q_critical_alerts_v2` | relay |
+| 499 | 21 | aggregator | `POST /internal/deliveries/ack` | relay |
+
+The same trace holds the further relays, consumers and acknowledgements of the other alerts. The store write is inside the `coastal critical ingest` span; it has no span of its own on this path.
