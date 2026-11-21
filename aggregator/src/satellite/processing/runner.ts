@@ -23,6 +23,8 @@ export interface RunnerDeps {
     metrics: MetricsLike;
     logger: Logger;
     batchSize?: number;
+    // Page size of the state rebuild after a restart or takeover (no side effects, so it can be much larger than a processing batch).
+    rebuildPageSize?: number;
     pollMs?: number;
     writeConcurrency?: number;
     retryMs?: number;
@@ -82,16 +84,29 @@ export async function runSatelliteProcessing(deps: RunnerDeps, handle: LeaderLea
         let committed = cp ? Number(cp.committed_offset) : -1;
         let stateVersion = cp?.state_version ?? 0;
 
+        // Rebuild by replaying the log up to the checkpoint. The next page is read while the current one is applied, so the replay is
+        // limited by the larger of read time and CPU time instead of their sum. Measured on the real feed: 1.17 million frames took 195 s
+        // with 500-frame sequential pages; the cost still grows with the log (a state snapshot would remove that, see docs).
+        const rebuildPage = deps.rebuildPageSize ?? 5000;
+        const startedRebuild = Date.now();
+        let nextPage: Promise<Awaited<ReturnType<typeof deps.log.read>>> | undefined;
+        const prefetch = (from: number): void => {
+            nextPage = deps.log.read(from, rebuildPage);
+            nextPage.catch(() => undefined); // a failure surfaces where the page is awaited, not as an unhandled rejection
+        };
+        if (committed >= 0) prefetch(0);
         for (let from = 0; from <= committed; ) {
-            const page = await deps.log.read(from, batchSize);
+            const page = await nextPage!;
             if (page.length === 0) throw new Error(`feed log ends before committed offset ${committed}`);
+            const lastInPage = page[page.length - 1]!.offset;
+            if (lastInPage < committed) prefetch(lastInPage + 1);
             for (const e of page) {
                 if (e.offset > committed) break;
                 proc.apply(e.offset, e.kind, e.raw);
             }
-            from = page[page.length - 1]!.offset + 1;
+            from = lastInPage + 1;
         }
-        deps.logger.info({ committed_offset: committed, fires: proc.index.fires().length, epoch: handle.epoch }, 'satellite state rebuilt from feed log');
+        deps.logger.info({ committed_offset: committed, fires: proc.index.fires().length, epoch: handle.epoch, rebuild_ms: Date.now() - startedRebuild }, 'satellite state rebuilt from feed log');
 
         while (alive()) {
             const entries = await deps.log.read(committed + 1, batchSize);

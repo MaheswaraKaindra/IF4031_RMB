@@ -130,3 +130,20 @@ test('storage outage stalls the checkpoint and recovery applies the backlog exac
     }
     assert.deepEqual(await canonical(rig.repo), ref.fires);
 });
+
+test('a rebuild read page by page with read-ahead gives the same final set for any page size', async () => {
+    const frames = genStream(33);
+    const ref = await reference(frames);
+    const all = toEntries(frames);
+    for (const pageSize of [1, 2, 3, 5, 8, 1000]) {
+        for (const cut of [4, 15, 40]) {
+            if (cut >= all.length) continue;
+            const rig = newRig();
+            await rig.log.append(all.slice(0, cut));
+            await runToCatchUp(rig, { rebuildPageSize: pageSize });
+            await rig.log.append(all.slice(cut));
+            await runToCatchUp(rig, { rebuildPageSize: pageSize }); // a fresh run: the state is rebuilt from the log in pages of this size
+            assert.deepEqual(await canonical(rig.repo), ref.fires, `page size ${pageSize}, restart at ${cut}`);
+        }
+    }
+});
