@@ -43,6 +43,8 @@ export interface PollerConfig {
     blindAfterMs: number;
     blindRewindCooldownMs: number;
     conflictCacheSize: number;
+    // After a failed or timed-out fast publish the fast route is skipped for this long; the ledger relay carries the alert meanwhile.
+    fastPublishPauseMs: number;
     concurrency: number;
     scoutPages: number;
 }
@@ -55,6 +57,7 @@ export const DEFAULT_POLLER: PollerConfig = {
     blindAfterMs: 120_000,
     blindRewindCooldownMs: 300_000,
     conflictCacheSize: 20_000,
+    fastPublishPauseMs: 5000,
     concurrency: 8,
     scoutPages: 40,
 };
@@ -108,6 +111,7 @@ export class CoastalPoller {
     private emptySinceMs: number | undefined;
     private lastBlindRewindWall = -Infinity;
     private readonly fastSent = new Set<string>();
+    private fastBrokenUntilMs = 0;
     private readonly signatures = new Map<string, string>();
 
     constructor(private readonly d: PollerDeps) {
@@ -389,7 +393,9 @@ export class CoastalPoller {
         const record = observationToHazard(obs, station, { ingestedAt: new Date(this.now()).toISOString(), sourceRefId, conflictsWith });
         let deliveryId: string | undefined;
         const span = obs.critical ? this.d.tracer?.('coastal critical ingest', this.pollTrace, { hazard_id: record.hazard_id, observation_id: obs.observation_id, station_id: obs.station_id }) : undefined;
-        if (obs.critical) await this.fastPublish(record, span?.traceparent);
+        // Not awaited: the fast route is best effort and must never hold up ingestion. The ledger entry and the relay are the guarantee. With a
+        // slow or stalled broker, waiting here cost one timeout per critical alert, one after another (a burst of 200 took minutes).
+        if (obs.critical) void this.fastPublish(record, span?.traceparent);
         if (obs.critical) {
             try {
                 deliveryId = (await this.d.ledger.register(record, span?.traceparent)).id;
@@ -437,17 +443,25 @@ export class CoastalPoller {
 
     private async fastPublish(record: HazardRecord, traceparent: string | undefined): Promise<void> {
         if (!this.d.fastPublish || this.fastSent.has(record.hazard_id)) return;
+        if (this.now() < this.fastBrokenUntilMs) {
+            this.d.metrics.inc('coastal_fast_publish_total', { outcome: 'skipped' });
+            return;
+        }
         if (this.fastSent.size >= this.cfg.conflictCacheSize) this.fastSent.delete(this.fastSent.values().next().value!);
         this.fastSent.add(record.hazard_id);
+        let timer: NodeJS.Timeout | undefined;
         try {
             await Promise.race([
                 this.d.fastPublish(record, traceparent),
-                new Promise<never>((_, reject) => setTimeout(reject, 1000, new Error('fast publish timeout')).unref()),
+                new Promise<never>((_, reject) => { timer = setTimeout(reject, 1000, new Error('fast publish timeout')); }),
             ]);
             this.d.metrics.inc('coastal_fast_publish_total', { outcome: 'ok' });
         } catch {
             this.fastSent.delete(record.hazard_id);
+            this.fastBrokenUntilMs = this.now() + this.cfg.fastPublishPauseMs;
             this.d.metrics.inc('coastal_fast_publish_total', { outcome: 'failed' });
+        } finally {
+            clearTimeout(timer);
         }
     }
 

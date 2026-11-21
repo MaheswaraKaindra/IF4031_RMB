@@ -386,3 +386,43 @@ test('a cursor that points past the end of a replaced sensor log is dropped afte
     assert.equal(s.created.length, 16, 'after the silence the log is read from the start');
     assert.equal(count(s.counters, 'coastal_blind_rewinds_total', {}), 1);
 });
+
+test('a stalled broker does not hold up ingestion of a burst of critical alerts: they are all in the ledger quickly', async () => {
+    const s = setup();
+    s.sensor.log = Array.from({ length: 40 }, (_, i) => obs(i, { critical: true, observation_id: `obs-crit-${i}` }));
+    const p = new CoastalPoller({
+        client: s.sensor, breaker: s.breaker, bulkhead: new Bulkhead('coastal', 1), freshness: new SensorFreshness(undefined, () => []),
+        repo: s.repo, fenceStore: s.fence, ledger: s.ledger, checkpoints: s.checkpoints, quarantine: async () => undefined,
+        onCreated: () => undefined, markSource: async () => undefined, metrics: { inc: () => undefined, set: () => undefined, observe: () => undefined },
+        logger: pino({ level: 'silent' }), now: () => s.wall(), cfg: { pageSize: 50 },
+        fastPublish: () => new Promise<void>(() => undefined), // the broker never answers
+    });
+    const handle = await s.handleFor();
+    const t0 = Date.now();
+    assert.equal(await p.tick(handle), 'ok');
+    const took = Date.now() - t0;
+    assert.equal(s.ledger.entries.size, 40, 'every critical alert is registered for delivery');
+    assert.equal(took < 3000, true, `ingestion took ${took} ms: it must not wait one broker timeout per alert`);
+});
+
+test('after a failed fast publish the fast route is skipped for a while instead of timing out again for every alert', async () => {
+    const s = setup();
+    s.sensor.log = [obs(1, { critical: true }), obs(2, { critical: true }), obs(3, { critical: true })];
+    let calls = 0;
+    const p = new CoastalPoller({
+        client: s.sensor, breaker: s.breaker, bulkhead: new Bulkhead('coastal', 1), freshness: new SensorFreshness(undefined, () => []),
+        repo: s.repo, fenceStore: s.fence, ledger: s.ledger, checkpoints: s.checkpoints, quarantine: async () => undefined,
+        onCreated: () => undefined, markSource: async () => undefined, metrics: { inc: () => undefined, set: () => undefined, observe: () => undefined },
+        logger: pino({ level: 'silent' }), now: () => s.wall(), cfg: { pageSize: 1 },
+        fastPublish: async () => { calls += 1; throw new Error('broker down'); },
+    });
+    const handle = await s.handleFor();
+    await p.tick(handle);
+    const afterFirst = calls;
+    assert.equal(afterFirst >= 1, true, 'the first attempt fails');
+    s.sensor.log.push(obs(4, { critical: true }), obs(5, { critical: true }));
+    await p.tick(handle);
+    await p.tick(handle);
+    assert.equal(calls, afterFirst, 'no further attempt while the route is paused (the relay still delivers them)');
+    assert.equal(s.ledger.entries.size, 5, 'every critical alert is registered for delivery');
+});
