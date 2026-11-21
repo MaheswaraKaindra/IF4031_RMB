@@ -3,8 +3,9 @@
 //   node --import tsx src/tools/coastal-tool.ts report [--db bnpb_canonical_store] [--deadline 5000]
 //   node --import tsx src/tools/coastal-tool.ts synthetic [--n 200] [--rate 50] [--wait 60] [--deadline 5000]   inject critical deliveries into the ledger and measure them
 //   node --import tsx src/tools/coastal-tool.ts emit --n 750 --rate 5 --out emitted.json   enqueue critical observations into the fake sensor, record emission times
+//   node --import tsx src/tools/coastal-tool.ts latency --emitted emitted.json [--deadline 5000]   end-to-end latency: from emission at the sensor to the receiver's acknowledgement
 // Env: MONGO_URI, SENSOR_PANTAI_URL (default http://127.0.0.1:18080), PANTAI_AUTH_TOKEN.
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { MongoClient } from 'mongodb';
 import { contentSignature, validateObservation, validateStation, type Station } from '../coastal/contract.js';
 import { deliveryKey, MongoDeliveryLedger, summarize, type DeliveryEntry } from '../coastal/ledger.js';
@@ -78,6 +79,8 @@ async function main(): Promise<void> {
             await synthetic(db, deadline);
         } else if (cmd === 'verify') {
             await verify(db, deadline);
+        } else if (cmd === 'latency') {
+            await latency(db, deadline);
         } else {
             console.error('usage: coastal-tool.ts verify|report');
             process.exitCode = 2;
@@ -85,6 +88,56 @@ async function main(): Promise<void> {
     } finally {
         await client.close();
     }
+}
+
+// End-to-end latency from the emission times written by `emit` (this machine's clock) to the receiver's acknowledgement recorded in
+// the ledger (the store's clock). The offset between the two clocks is measured against the store and subtracted, so the figure
+// includes the poll interval, the sensor-to-aggregator hop, the publish and the consumer, not just the time inside the aggregator.
+async function latency(db: ReturnType<MongoClient['db']>, deadline: number): Promise<void> {
+    const file = flag('emitted', '');
+    if (!file) throw new Error('--emitted <file written by emit> is required');
+    const emitted = JSON.parse(readFileSync(file, 'utf8')) as Record<string, number>;
+    let offset = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 5; i++) {
+        const t0 = Date.now();
+        const hello = (await db.admin().command({ isMaster: 1 })) as { localTime?: Date };
+        const t1 = Date.now();
+        if (hello.localTime) {
+            const est = hello.localTime.getTime() - (t0 + t1) / 2;
+            if (Math.abs(est) < Math.abs(offset)) offset = est;
+        }
+    }
+    if (!Number.isFinite(offset)) offset = 0;
+    const ids = Object.keys(emitted);
+    const entries = (await db.collection('coastal_deliveries').find({ hazard_id: { $in: ids } }, { projection: { event: 0 } }).toArray()) as unknown as DeliveryEntry[];
+    const byId = new Map(entries.map((e) => [e.hazard_id, e]));
+    const lat: number[] = [];
+    let notInLedger = 0;
+    let notDelivered = 0;
+    for (const id of ids) {
+        const e = byId.get(id);
+        if (!e) notInLedger++;
+        else if (!e.delivered_at) notDelivered++;
+        else lat.push(e.delivered_at.getTime() - (emitted[id]! + offset));
+    }
+    lat.sort((a, b) => a - b);
+    const pct = (p: number): number | null => (lat.length === 0 ? null : Math.round(lat[Math.min(lat.length - 1, Math.ceil(p * lat.length) - 1)]!));
+    const within = lat.filter((v) => v <= deadline).length;
+    const result = {
+        emitted: ids.length,
+        delivered: lat.length,
+        not_in_ledger: notInLedger,
+        not_delivered: notDelivered,
+        within_deadline: within,
+        deadline_ms: deadline,
+        deadline_misses: ids.length - within,
+        p50_ms: pct(0.5),
+        p95_ms: pct(0.95),
+        max_ms: lat.length ? Math.round(lat[lat.length - 1]!) : null,
+        clock_offset_ms: Math.round(offset),
+    };
+    console.log(JSON.stringify(result, null, 2));
+    if (notInLedger + notDelivered > 0 || result.deadline_misses > 0) process.exitCode = 1;
 }
 
 async function verify(db: ReturnType<MongoClient['db']>, deadline: number): Promise<void> {

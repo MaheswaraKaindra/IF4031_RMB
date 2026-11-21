@@ -231,7 +231,8 @@ async function verify(repo: MongoCanonicalRepository, db: import('mongodb').Db):
     // checkpoint (effects precede it) and never ahead of the tail, so fires touched by frames in (checkpoint, tail] are in flight.
     const cp = await new MongoCheckpointStore(() => db).get(SATELLITE_SOURCE, SATELLITE_PARTITION);
     const committed = cp ? Number(cp.committed_offset) : -1;
-    const actual = new Map((await allFires(repo)).map((f) => [f.source_ref_id, f]));
+    // Only records the pipeline wrote (fire-*): synthetic SATELIT records left by load tests are not part of the comparison.
+    const actual = new Map((await allFires(repo)).filter((f) => f.source_ref_id.startsWith('fire-')).map((f) => [f.source_ref_id, f]));
     const log = new MongoFeedLog(() => db);
     const tail = await log.tail();
     const proc = new SatelliteProcessor({ lateness_ms: Number(flag('lateness', '360')) * 60_000, evict_every_offsets: Number(flag('evict', '1000')) });
@@ -279,7 +280,9 @@ async function verify(repo: MongoCanonicalRepository, db: import('mongodb').Db):
 async function referenceDiff(repo: MongoCanonicalRepository, db: import('mongodb').Db): Promise<void> {
     const cp = await new MongoCheckpointStore(() => db).get(SATELLITE_SOURCE, SATELLITE_PARTITION);
     const committed = cp ? Number(cp.committed_offset) : -1;
-    const stored = (await allFires(repo)).filter((f) => f.hazard_type === 'WILDFIRE');
+    // Only records the pipeline itself wrote: other SATELIT records (synthetic load from earlier tests) are counted, not compared.
+    const storedAll = (await allFires(repo)).filter((f) => f.hazard_type === 'WILDFIRE');
+    const stored = storedAll.filter((f) => f.source_ref_id.startsWith('fire-'));
     const log = new MongoFeedLog(() => db);
     const tail = await log.tail();
     const entries: LogEntry[] = [];
@@ -302,6 +305,7 @@ async function referenceDiff(repo: MongoCanonicalRepository, db: import('mongodb
         log_tail: tail,
         reference_fires: atCommit.fires.size,
         stored_fires: stored.length,
+        other_satelit_records_ignored: storedAll.length - stored.length,
         in_flight_skipped: inFlight.size,
         reference_counters: { detections_kept: atCommit.detections, low_confidence: atCommit.low_confidence, singletons: atCommit.singletons, late: atCommit.late, retracted: atCommit.retracted, invalid: atCommit.invalid, unknown_corrections: atCommit.unknown_corrections },
         missing: diff.missing.slice(0, 50),
