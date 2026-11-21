@@ -11,6 +11,7 @@ import { MongoLateStore } from './processing/lateStore.js';
 import { runSessionMonitor } from './feed/sessionMonitor.js';
 import type { MetricsLike } from './metrics.js';
 import { runSatelliteProcessing, SATELLITE_SOURCE } from './processing/runner.js';
+import { MongoSnapshotStore } from './processing/snapshotStore.js';
 
 export interface SatelliteServiceDeps {
     repo: ICanonicalRepository;
@@ -101,6 +102,7 @@ export class SatelliteService {
                     repo: deps.repo,
                     fenceStore: deps.fenceStore,
                     lateStore: new MongoLateStore(deps.getDb),
+                    snapshots: new MongoSnapshotStore(deps.getDb),
                     cfg: { lateness_ms: cfg.latenessMs, evict_every_offsets: cfg.evictEveryOffsets },
                     metrics: deps.metrics,
                     logger,

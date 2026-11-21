@@ -9,6 +9,7 @@ import type { IFeedLog } from '../feed/log.js';
 import type { MetricsLike } from '../metrics.js';
 import type { ILateStore } from './lateStore.js';
 import { SatelliteProcessor, type FrameResult, type LateDetection, type ProcessorConfig } from './processor.js';
+import type { ISnapshotStore } from './snapshotStore.js';
 
 export const SATELLITE_SOURCE = 'SATELIT';
 export const SATELLITE_PARTITION = 'stream';
@@ -23,6 +24,10 @@ export interface RunnerDeps {
     metrics: MetricsLike;
     logger: Logger;
     batchSize?: number;
+    // Optional state snapshots (see snapshotStore.ts): a takeover loads the newest one and replays only the frames after it.
+    snapshots?: ISnapshotStore;
+    snapshotEveryOffsets?: number;
+    snapshotEveryMs?: number;
     // Page size of the state rebuild after a restart or takeover (no side effects, so it can be much larger than a processing batch).
     rebuildPageSize?: number;
     pollMs?: number;
@@ -77,16 +82,33 @@ export async function runSatelliteProcessing(deps: RunnerDeps, handle: LeaderLea
     const pollMs = deps.pollMs ?? 100;
     const now = deps.nowMs ?? (() => Date.now());
     const alive = (): boolean => !handle.signal.aborted && handle.isStillValid();
-    const proc = new SatelliteProcessor(deps.cfg);
+    let proc = new SatelliteProcessor(deps.cfg);
 
     try {
         const cp = await deps.checkpoints.get(SATELLITE_SOURCE, SATELLITE_PARTITION);
         let committed = cp ? Number(cp.committed_offset) : -1;
         let stateVersion = cp?.state_version ?? 0;
 
-        // Rebuild by replaying the log up to the checkpoint. The next page is read while the current one is applied, so the replay is
-        // limited by the larger of read time and CPU time instead of their sum. Measured on the real feed: 1.17 million frames took 195 s
-        // with 500-frame sequential pages; the cost still grows with the log (a state snapshot would remove that, see docs).
+        // Rebuild: load the newest snapshot (state after frames 0..k, k <= committed) when there is one, then replay the log from k+1 up to the
+        // checkpoint without side effects. Without a usable snapshot the whole log is replayed (1.17 million frames took 195 s on the real
+        // feed with 500-frame sequential pages). The next page is read while the current one is applied.
+        let replayFrom = 0;
+        let snapshotOffset = -1;
+        if (deps.snapshots && committed >= 0) {
+            try {
+                const snap = await deps.snapshots.get();
+                if (snap && snap.offset >= 0 && snap.offset <= committed) {
+                    proc.importState(snap.state);
+                    replayFrom = snap.offset + 1;
+                    snapshotOffset = snap.offset;
+                }
+            } catch (err) {
+                deps.logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'satellite snapshot unusable, replaying the whole feed log');
+                proc = new SatelliteProcessor(deps.cfg);
+                replayFrom = 0;
+                snapshotOffset = -1;
+            }
+        }
         const rebuildPage = deps.rebuildPageSize ?? 5000;
         const startedRebuild = Date.now();
         let nextPage: Promise<Awaited<ReturnType<typeof deps.log.read>>> | undefined;
@@ -94,8 +116,8 @@ export async function runSatelliteProcessing(deps: RunnerDeps, handle: LeaderLea
             nextPage = deps.log.read(from, rebuildPage);
             nextPage.catch(() => undefined); // a failure surfaces where the page is awaited, not as an unhandled rejection
         };
-        if (committed >= 0) prefetch(0);
-        for (let from = 0; from <= committed; ) {
+        if (replayFrom <= committed) prefetch(replayFrom);
+        for (let from = replayFrom; from <= committed; ) {
             const page = await nextPage!;
             if (page.length === 0) throw new Error(`feed log ends before committed offset ${committed}`);
             const lastInPage = page[page.length - 1]!.offset;
@@ -106,7 +128,9 @@ export async function runSatelliteProcessing(deps: RunnerDeps, handle: LeaderLea
             }
             from = lastInPage + 1;
         }
-        deps.logger.info({ committed_offset: committed, fires: proc.index.fires().length, epoch: handle.epoch, rebuild_ms: Date.now() - startedRebuild }, 'satellite state rebuilt from feed log');
+        let lastSnapshotOffset = snapshotOffset;
+        let lastSnapshotAt = now();
+        deps.logger.info({ committed_offset: committed, fires: proc.index.fires().length, epoch: handle.epoch, rebuild_ms: Date.now() - startedRebuild, snapshot_offset: snapshotOffset, replayed_frames: Math.max(0, committed - replayFrom + 1) }, 'satellite state rebuilt from feed log');
 
         while (alive()) {
             const entries = await deps.log.read(committed + 1, batchSize);
@@ -134,6 +158,16 @@ export async function runSatelliteProcessing(deps: RunnerDeps, handle: LeaderLea
                 }
             }
             committed = last;
+            if (deps.snapshots && (committed - lastSnapshotOffset >= (deps.snapshotEveryOffsets ?? 20_000) || (committed > lastSnapshotOffset && now() - lastSnapshotAt >= (deps.snapshotEveryMs ?? 120_000)))) {
+                try {
+                    await deps.snapshots.put({ offset: committed, state: proc.exportState() });
+                    lastSnapshotOffset = committed;
+                    lastSnapshotAt = now();
+                } catch (err) {
+                    lastSnapshotAt = now(); // do not retry on every batch; recovery then just replays more frames
+                    deps.logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'satellite snapshot not saved');
+                }
+            }
             observeLatency(deps, batch, now);
             publishGauges(deps, proc, committed, await deps.log.tail());
         }

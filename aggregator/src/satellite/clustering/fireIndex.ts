@@ -69,6 +69,19 @@ export class FireIndex {
         return this.recompute(seeds);
     }
 
+    /** Everything needed to rebuild this index: the detections it holds (kept and low confidence). Fires are derived, not stored. */
+    exportState(): { kept: Detection[]; low: Detection[]; filteredLow: number } {
+        return { kept: [...this.detections.values()], low: [...this.low.values()], filteredLow: this.filteredLow };
+    }
+
+    /** Rebuilds an empty index from exportState(): fire identity is a function of the member set, so the same detections give the same fires. */
+    restoreState(state: { kept: Detection[]; low: Detection[]; filteredLow: number }): void {
+        if (this.detections.size > 0 || this.low.size > 0) throw new Error('restoreState needs an empty index');
+        for (const d of [...state.kept].sort((a, b) => a.time_ms - b.time_ms || (a.key < b.key ? -1 : 1))) this.upsert(d);
+        for (const d of state.low) this.low.set(d.key, d);
+        this.filteredLow = state.filteredLow;
+    }
+
     retract(key: string): FireDelta {
         this.low.delete(key);
         return this.removeFromGraph(key);

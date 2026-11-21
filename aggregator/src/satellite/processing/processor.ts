@@ -16,6 +16,14 @@ export interface LateDetection {
     behind_ms: number;
 }
 
+export interface ProcessorSnapshot {
+    cfg: ProcessorConfig;
+    watermarkMs: number | null;
+    retracted: Array<[string, number]>;
+    counters: ProcessorCounters;
+    index: { kept: import('../clustering/detection.js').Detection[]; low: import('../clustering/detection.js').Detection[]; filteredLow: number };
+}
+
 export interface FrameResult {
     delta: FireDelta;
     late?: LateDetection;
@@ -55,6 +63,27 @@ export class SatelliteProcessor {
     private readonly retracted = new Map<string, number>();
 
     constructor(private readonly cfg: ProcessorConfig) {}
+
+    /** Complete state after the frames applied so far, small enough to store: the live detections, the retraction memory and the watermark. */
+    exportState(): ProcessorSnapshot {
+        return {
+            cfg: { lateness_ms: this.cfg.lateness_ms, evict_every_offsets: this.cfg.evict_every_offsets },
+            watermarkMs: Number.isFinite(this.watermarkMs) ? this.watermarkMs : null,
+            retracted: [...this.retracted.entries()],
+            counters: { ...this.counters },
+            index: this.index.exportState(),
+        };
+    }
+
+    /** Only into a fresh processor, and only for the same configuration: a snapshot taken under other settings is not the same state. */
+    importState(s: ProcessorSnapshot): void {
+        if (s.cfg.lateness_ms !== this.cfg.lateness_ms || s.cfg.evict_every_offsets !== this.cfg.evict_every_offsets) throw new Error('snapshot was taken under a different configuration');
+        this.index.restoreState(s.index);
+        this.watermarkMs = s.watermarkMs ?? Number.NEGATIVE_INFINITY;
+        this.retracted.clear();
+        for (const [k, t] of s.retracted) this.retracted.set(k, t);
+        Object.assign(this.counters, s.counters);
+    }
 
     get retractedCount(): number {
         return this.retracted.size;

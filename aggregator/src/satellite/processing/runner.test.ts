@@ -147,3 +147,61 @@ test('a rebuild read page by page with read-ahead gives the same final set for a
         }
     }
 });
+
+test('processor state exported at any frame and imported into a new processor continues to the same result', async () => {
+    const { InMemorySnapshotStore } = await import('./snapshotStore.js');
+    void InMemorySnapshotStore;
+    for (const seed of [5, 21, 33, 44]) {
+        const entries = toEntries(genStream(seed));
+        const whole = new SatelliteProcessor(CFG);
+        for (const e of entries) whole.apply(e.offset, e.kind, e.raw);
+        for (let cut = 1; cut < entries.length; cut += 5) {
+            const first = new SatelliteProcessor(CFG);
+            for (const e of entries.slice(0, cut)) first.apply(e.offset, e.kind, e.raw);
+            const stored = JSON.parse(JSON.stringify(first.exportState())); // through JSON, as the store does
+            const resumed = new SatelliteProcessor(CFG);
+            resumed.importState(stored);
+            for (const e of entries.slice(cut)) resumed.apply(e.offset, e.kind, e.raw);
+            assert.deepEqual(resumed.index.fires(), whole.index.fires(), `seed ${seed}, snapshot after frame ${cut - 1}`);
+            assert.equal(resumed.watermarkMs, whole.watermarkMs);
+            assert.deepEqual(resumed.counters, whole.counters);
+        }
+    }
+});
+
+test('a restart uses the snapshot and replays only the frames after it, with the same final set', async () => {
+    const { InMemorySnapshotStore } = await import('./snapshotStore.js');
+    const frames = genStream(33);
+    const ref = await reference(frames);
+    const all = toEntries(frames);
+    const cut = Math.floor(all.length * 0.7);
+    const rig = newRig();
+    const snapshots = new InMemorySnapshotStore();
+    await rig.log.append(all.slice(0, cut));
+    await runToCatchUp(rig, { snapshots, snapshotEveryOffsets: 10 });
+    assert.ok(snapshots.snapshot && snapshots.snapshot.offset > 0, 'a snapshot was saved');
+    const snapAt = snapshots.snapshot.offset;
+    await rig.log.append(all.slice(cut));
+    const reads: number[] = [];
+    const realRead = rig.log.read.bind(rig.log);
+    rig.log.read = async (from: number, limit: number) => { reads.push(from); return realRead(from, limit); };
+    await runToCatchUp(rig, { snapshots, snapshotEveryOffsets: 10, rebuildPageSize: 4 });
+    assert.equal(reads.includes(0), false, 'the restart did not replay the log from offset 0');
+    assert.equal(Math.min(...reads) >= snapAt + 1, true, `the first replayed frame is after the snapshot (offset ${snapAt})`);
+    assert.deepEqual(await canonical(rig.repo), ref.fires);
+});
+
+test('an unusable snapshot falls back to the full replay and still gives the same set', async () => {
+    const { InMemorySnapshotStore } = await import('./snapshotStore.js');
+    const frames = genStream(21);
+    const ref = await reference(frames);
+    const all = toEntries(frames);
+    const rig = newRig();
+    const snapshots = new InMemorySnapshotStore();
+    await rig.log.append(all.slice(0, 30));
+    await runToCatchUp(rig, { snapshots, snapshotEveryOffsets: 5 });
+    snapshots.snapshot = { offset: 20, state: { ...snapshots.snapshot!.state, cfg: { lateness_ms: 1, evict_every_offsets: 1 } } }; // taken under other settings
+    await rig.log.append(all.slice(30));
+    await runToCatchUp(rig, { snapshots });
+    assert.deepEqual(await canonical(rig.repo), ref.fires);
+});
