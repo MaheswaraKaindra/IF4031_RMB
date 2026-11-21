@@ -340,7 +340,13 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
     // aggregator restart cleared it). The next probe connects from scratch.
     private async hello(m: StoreMember): Promise<{ reachable: boolean; primary: boolean; secondary: boolean }> {
         try {
-            const r = await this.memberClient(m, false).db('admin').command({ hello: 1 }, { timeoutMS: this.probeMs });
+            // Hard deadline around the probe: a connection to a VM that vanished without closing it can leave the driver call hanging far
+            // beyond its own timeouts, and one hanging probe would block the whole status round (and with it the degraded flag).
+            let timer: NodeJS.Timeout | undefined;
+            const r = await Promise.race([
+                this.memberClient(m, false).db('admin').command({ hello: 1 }, { timeoutMS: this.probeMs }),
+                new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`probe deadline ${this.probeMs + 500} ms`)), this.probeMs + 500); }),
+            ]).finally(() => clearTimeout(timer));
             this.noteProbe(m, true);
             return { reachable: true, primary: r['isWritablePrimary'] === true, secondary: r['secondary'] === true };
         } catch (err) {

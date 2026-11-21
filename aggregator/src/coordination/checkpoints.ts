@@ -1,6 +1,6 @@
 import type { Collection, Db } from 'mongodb';
 import type { Checkpoint, ICheckpoint } from '../storage/contracts.js';
-import { bookkeepingOptions } from '../storage/health.js';
+import { bookkeepingOptions, noteBookkeepingFailure } from '../storage/health.js';
 
 interface CheckpointDoc extends Checkpoint {
     _id: string;
@@ -55,6 +55,7 @@ export class MongoCheckpointStore implements ICheckpoint {
             );
             if (doc) return 'applied';
         } catch (err) {
+            noteBookkeepingFailure(err);
             if (!isDupKey(err)) return 'unavailable';
         }
 

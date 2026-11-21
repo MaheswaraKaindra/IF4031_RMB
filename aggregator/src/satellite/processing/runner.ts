@@ -1,4 +1,5 @@
 import type { Logger } from 'pino';
+import { noteBookkeepingFailure } from '../../storage/health.js';
 import { fencedIngest, type ISourceFenceStore } from '../../coordination/fencing.js';
 import type { LeaderLeaseHandle } from '../../coordination/leaderLoop.js';
 import type { ICheckpoint } from '../../storage/contracts.js';
@@ -151,6 +152,7 @@ export async function runSatelliteProcessing(deps: RunnerDeps, handle: LeaderLea
                     break;
                 } catch (err) {
                     if (err instanceof LeadershipLostError) throw err;
+                    noteBookkeepingFailure(err);
                     if (!alive()) throw new LeadershipLostError('leadership ended while retrying a batch');
                     deps.logger.warn({ error: err instanceof Error ? err.message : String(err), last_offset: last }, 'satellite batch will be retried');
                     deps.metrics.inc('satellite_batch_retries_total', {});
