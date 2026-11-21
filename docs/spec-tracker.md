@@ -5,7 +5,7 @@ One row per requirement of the official spec (`IF4031 - Tugas Besar - M2.pdf`). 
 **Status:** PASS = measured on the real 3-VM cluster and met. PASS* = met, with a limit that must be written in the report. PARTIAL = part measured or part met. NOT TESTED = no measurement yet. WAITING = needs the assistants' material (released after the deadline). FAIL = measured and not met.
 **Proof:** what the report must contain for this criterion (spec: "Bukti penyelesaian per kriteria": screenshot, log excerpt with correlation ID, measurement or load-test output). "Re-run" = the user will repeat it while taking screenshots.
 
-Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
+Last updated 2026-11-22, after the full sweep (commit `3bdce72` and later).
 
 ## Problem 1: storage (A2)
 
@@ -96,9 +96,8 @@ Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
 
 ## What is still open
 
-1. P2.7 uncapped throughput ratio (not reachable on this hardware); the kind run is not needed for 2.6 and 2.8 and would share the same host CPU.
-2. Browser check of 1.7.
-3. Nothing further on P5.5 unless priority handling is added inside the aggregator.
-4. G.5 bonus (optional).
-5. README completeness.
-6. After the deadline: official catalog, checksum, reference, Audit credential, Tester Agent key, load-test script; node-loss p95 for 5.1 stays a documented limit.
+1. **Yours:** the browser check of 1.7 (analytics dashboard, normal and with a node down), screenshots for every row marked "Proof", the report text, AI-use form, video, submission form, `milestone-2` tag.
+2. **Limits to state in the report, not fixable here:** 2.7 uncapped throughput ratio (host CPU is the bottleneck), 5.1 node-loss p95 of 34 s, 5.3 absolute M1 numbers at 50 VUs, 5.5 our own 1 s read target under the flood, the 100 req/s capacity of the VMs.
+3. **Small gaps:** 4.2 (live late detections were never produced by the feed, the late path is only unit-tested), 4.4 (no artificial 60x burst), `detection_keys` format and the 403 case in the contract check, G.5 bonus (optional).
+4. **After the deadline (assistants):** real catalog and checksum (1.1, 1.4), their reference (4.6), Audit credential, Tester Agent key and game day (5.6, 5.8), load-test script, and how the Tester Agent may target control-plane nodes (G.4).
+5. The README is up to date with this sweep's scripts and settings.
