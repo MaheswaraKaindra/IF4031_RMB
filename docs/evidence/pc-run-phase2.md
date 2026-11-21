@@ -230,3 +230,16 @@ Change: client-api now repeats that POST once (3 s limit, `FIELD_REPORT_RETRY_TI
 - A lower Media ceiling did not help: with 568 rejections per second client-api itself used 350-680 m CPU per pod, and the aggregators sat at 170-320 m CPU, so the limit is the VMs' CPU, not the admission rule. The ceiling was put back to 30.
 - The field report retry works (eight reports were answered by their second attempt in the logs). In the second run five of 61 reports timed out twice (3 s each) and were refused with 503 because the aggregator did not answer, so a saturated cluster can still refuse a field report.
 - Not done: priority handling inside the aggregator (reads and report writes share its event loop).
+
+## M1 latency workload on Kubernetes while Sensor Pantai is sick, 2026-11-22 (P5 criterion 3)
+
+`scripts/k8s/p5-m1-load.sh`: the inherited M1 workload `load-test/events.js` (50 VUs: 25 SEISMIC-only, 25 VOLCANIC; 60 s; M1 threshold SEISMIC p95 < 300 ms and failed requests < 1%) through the NodePorts of node-a, with the fake sensor in each mode.
+
+| Sensor mode | SEISMIC p95 | Failed requests | Iterations/s | M1 threshold |
+|---|---:|---:|---:|---|
+| normal (baseline) | 1.38 s | 1.04% (27 of 2,580; max 14.5 s) | 41 | not met |
+| slow (2.5 s delay) | 1.09 s | 0% | 54 | not met |
+| blackhole | 1.07 s | 0% | 55 | not met |
+
+- **What this shows:** a sick sensor does not make the other sources slower than they are with a healthy sensor (the slow and blackhole runs are slightly faster than the baseline, whose 27 failures came in a run that started right after the aggregator restart for the fake sensor). That is the intent of the criterion.
+- **What it does not show:** the absolute M1 target (p95 < 300 ms at 50 VUs) is NOT met on these VMs, with or without a sick sensor. The median is about 1 s, so at this closed-loop load the cluster is at its CPU capacity (about 55 requests per second for `/events`); the earlier `p5-checks.sh` runs (sequential requests, SEISMIC p95 under 33 ms) are at a much lower load. This has to be stated in the report as a capacity limit and not as a pass of the M1 numbers.
