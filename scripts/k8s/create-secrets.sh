@@ -53,8 +53,10 @@ if [ "$STORE_MODE" = sharded ]; then
   MONGO_KEYFILE=$(need MONGO_KEYFILE)
   AUDIT_TOKEN=$(need AUDIT_TOKEN)
   PANTAI_AUTH_TOKEN=$(need PANTAI_AUTH_TOKEN)
-  # The aggregator authenticates as its own least-privilege user (readWrite on one database) through mongos.
-  MONGO_URI="mongodb://aggregator:$MONGO_APP_PASSWORD@mongos:27017/bnpb_canonical_store?authSource=admin"
+  # The aggregator authenticates as its own least-privilege user (readWrite on one database) through mongos. The SRV name of the headless
+  # Service lists every mongos pod, so the driver tracks them itself and skips one that died with its node (a ClusterIP would not).
+  MONGO_URI_PLAIN="mongodb://aggregator:$MONGO_APP_PASSWORD@mongos:27017/bnpb_canonical_store?authSource=admin" # the legacy mongo shell of the init container has no SRV support
+  MONGO_URI="mongodb+srv://aggregator:$MONGO_APP_PASSWORD@mongos-direct.$NS.svc.cluster.local/bnpb_canonical_store?authSource=admin&tls=false&srvServiceName=mongo"
   SHARDED_ENV=("STORE_MODE=sharded" "STORE_PROBE_USER=probe" "STORE_PROBE_PASSWORD=$STORE_PROBE_PASSWORD")
 fi
 
@@ -81,7 +83,7 @@ apply_secret rabbitmq-secret \
   "RABBITMQ_DEFAULT_USER=$RABBIT_USER" "RABBITMQ_DEFAULT_PASS=$RABBITMQ_PASSWORD"
 apply_secret aggregator-secret \
   "X_BMKG_KEY=$X_BMKG_KEY" "PVMBG_TOKEN=$PVMBG_TOKEN" \
-  "MONGO_URI=$MONGO_URI" "RABBITMQ_URL=$RABBITMQ_URL" \
+  "MONGO_URI=$MONGO_URI" "MONGO_URI_PLAIN=${MONGO_URI_PLAIN:-$MONGO_URI}" "RABBITMQ_URL=$RABBITMQ_URL" \
   ${AUDIT_TOKEN:+"AUDIT_TOKEN=$AUDIT_TOKEN"} ${SATELLITE_GROUP_TOKEN:+"SATELLITE_GROUP_TOKEN=$SATELLITE_GROUP_TOKEN"} ${SHARDED_ENV[@]+"${SHARDED_ENV[@]}"}
 apply_secret client-api-secret "JWT_PUBLIC_KEY_B64=$JWT_PUBLIC_KEY_B64"
 apply_secret auth-service-secret \

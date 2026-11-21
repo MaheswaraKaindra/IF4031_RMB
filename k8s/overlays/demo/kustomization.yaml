@@ -125,7 +125,7 @@ patches:
                 env:
                   - {name: HOME, value: /tmp}
                   - name: MONGO_URI
-                    valueFrom: {secretKeyRef: {name: aggregator-secret, key: MONGO_URI}}
+                    valueFrom: {secretKeyRef: {name: aggregator-secret, key: MONGO_URI_PLAIN}}
                 command:
                   - bash
                   - -c

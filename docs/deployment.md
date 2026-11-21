@@ -45,7 +45,7 @@ flowchart TB
 | client-api | `aggregator:3000` (`/internal/*`) | HTTP | NetworkPolicy: client-api only |
 | aggregator | `mock-bmkg:8081`, `mock-pvmbg:8082`, `sensor-pantai:8080` | HTTP | NetworkPolicy |
 | aggregator | `satellite.naufarrel.dev:443` (SSE, only when the satellite token is set) | HTTPS | egress is not restricted |
-| aggregator | `mongos:27017` | MongoDB wire, keyfile auth between members | NetworkPolicy: `role=aggregator` only |
+| aggregator | `mongos-direct` (SRV name, both mongos pods; `mongos:27017` ClusterIP kept for the init container and tools) | MongoDB wire, keyfile auth between members | NetworkPolicy: `role=aggregator` only |
 | aggregator | `mongo-s*-*-0.<member>:27017` directly | MongoDB wire (probe user) | NetworkPolicy: placement probes, degraded scans |
 | mongos | config RS `cfg` + shard RSs `s1`/`s2`/`s3` | MongoDB wire | store-ingress policy |
 | aggregator, consumers | `rabbitmq:5672` | AMQP | NetworkPolicy |
