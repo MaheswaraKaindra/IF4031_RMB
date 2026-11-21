@@ -1,6 +1,6 @@
 import { MongoClient, MongoWriteConcernError, type Collection, type Document, type Filter } from 'mongodb';
 import { logger } from '../logger.js';
-import { setStoreDegraded } from './health.js';
+import { isStoreDegraded, setStoreDegraded } from './health.js';
 import { AnalyticsAccumulator } from './analytics.js';
 import { decodeCursor, encodeCursor } from './cursor.js';
 import { hazardIdFor } from './identity.js';
@@ -109,8 +109,12 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         try {
             // Fence/version check and write are ONE conditional upsert: if the condition fails on an
             // existing record the upsert tries to insert the same _id and raises E11000 (below).
-            const r = await this.hazards().updateOne(filter, update, { upsert: true, writeConcern: this.writeConcern });
-            return { outcome: r.upsertedCount > 0 || r.modifiedCount > 0 ? 'applied' : 'duplicate', hazard_id: id, created: r.upsertedCount > 0 };
+            // While the store is already known to be degraded a w:2 write can only wait out its whole timeout and then be acknowledged as
+            // degraded anyway. Writing at w:1 right away gives the same outcome without the wait (1.5 s per write, which made the drain of
+            // a backlog after a node loss take tens of seconds). Strict mode keeps waiting: it must fail closed.
+            const quick = !this.o.strictWrites && isStoreDegraded() && this.writeConcern.w !== 1;
+            const r = await this.hazards().updateOne(filter, update, { upsert: true, writeConcern: quick ? { w: 1 } : this.writeConcern });
+            return { outcome: r.upsertedCount > 0 || r.modifiedCount > 0 ? 'applied' : 'duplicate', hazard_id: id, created: r.upsertedCount > 0, ...(quick ? { degraded: true } : {}) };
         } catch (err) {
             if (isDuplicateKey(err)) return this.classifyRejected(id, epoch, eventVersion);
             if (err instanceof MongoWriteConcernError && !this.o.strictWrites) {
@@ -143,7 +147,8 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
             ? { _id: id as never }
             : { _id: id as never, $or: [{ fence_epoch: { $exists: false } }, { fence_epoch: { $lte: epoch } }] };
         try {
-            const r = await this.hazards().deleteOne(filter, { writeConcern: this.writeConcern });
+            const quick = !this.o.strictWrites && isStoreDegraded() && this.writeConcern.w !== 1;
+            const r = await this.hazards().deleteOne(filter, { writeConcern: quick ? { w: 1 } : this.writeConcern });
             if (r.deletedCount > 0) return { outcome: 'applied', hazard_id: id };
             if (epoch !== undefined) {
                 const cur = await this.hazards().findOne({ _id: id as never }, { projection: { fence_epoch: 1 }, maxTimeMS: this.deadlineMs });
