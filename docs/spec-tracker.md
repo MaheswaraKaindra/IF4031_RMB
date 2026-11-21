@@ -29,9 +29,9 @@ Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
 | 2.3 | Fetcher dies: another instance continues within 60 s, no gap, no duplicate | Yes | PASS (24-26 s) | `p2-failover.sh` | Timeline of the lease takeover |
 | 2.4 | Clock shifted (+45 s, then -30 s): never two instances saving in the same period | Yes | PASS | `p2-clock-skew.sh` | Sampler output "never two leaders" |
 | 2.5 | Leader frozen longer than the limit, wakes up: stores nothing until its status is refreshed | Yes | PASS | `p2-freeze.sh` | Output with fencing rejections |
-| 2.6 | Sustained load of at least 10,000 VU for at least 120 s while instances go 3 -> 5 -> 2; error rate outside controlled rejection below 1%, criterion 2 still holds | No. The VMs saturate at about 110 req/s through the NodePort; kind attempt failed (kube-proxy "too many open files") and kind is not allowed for the demo | NOT TESTED (kind run is last) | `scripts/k8s/p2-load.sh`, `load-test/` | k6 output, configuration and tooling (report item 4) |
-| 2.7 | Throughput with 3 instances at least 2.0x one instance | No | NOT TESTED | as above | Throughput numbers |
-| 2.8 | Version swap during the load test without a failed request | No (a rolling update was only observed informally) | NOT TESTED | as above | k6 failures = 0 during the rollout |
+| 2.6 | Sustained load of at least 10,000 VU for at least 120 s while instances go 3 -> 5 -> 2; error rate outside controlled rejection below 1%, criterion 2 still holds | Yes with a custom async generator (k6 cannot hold 10,000 VUs here): 10,000 users all active for 200 s, 0 errors at about 71 req/s; a run at about 100 req/s failed the 1% limit (1.13%) | PASS* (light load per user; the VMs' limit is about 100 req/s) | `p2-load-10k.sh`, `vu-sim.mjs`; earlier k6 `p2-load.sh` | Both runs, tooling and configuration (report item 4), explain the generator |
+| 2.7 | Throughput with 3 instances at least 2.0x one instance | Uncapped: NOT met (114 req/s vs 91-103 req/s: the host CPU, not the aggregator, is the bottleneck). With a CPU limit of 250 m per aggregator pod: 4.3x and 9.8x successful throughput, but the single instance fails 68-74% of requests | PASS* only under the CPU cap; FAIL uncapped | `p2-load.sh`, manual sweep in the evidence file | All numbers; state the cap and failure rates; do not present the uncapped result as a pass |
+| 2.8 | Version swap during the load test without a failed request | Yes: a rolling update under the 10,000-user load (0 failures of 24,214 requests); also k6 at 60 req/s (0 of 2,703) | PASS | `p2-load-10k.sh`, `p2-load.sh` | Rollout log and error count in the load output |
 | 2.R | Report items: problem names, time source and why safe for 2.4 and 2.5, lease/timeout values and trade-off, load-test configuration | n/a | Text | `docs/p2-p3-design.md` | Written text |
 
 ## Problem 3: schema change and field reports (B)
@@ -96,7 +96,7 @@ Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
 
 ## What is still open
 
-1. P2 criteria 6-8 (10,000 VU, 3x vs 1x, version swap): the kind run, last.
+1. P2.7 uncapped throughput ratio (not reachable on this hardware); the kind run is not needed for 2.6 and 2.8 and would share the same host CPU.
 2. Browser check of 1.7.
 3. Nothing further on P5.5 unless priority handling is added inside the aggregator.
 4. G.5 bonus (optional).
