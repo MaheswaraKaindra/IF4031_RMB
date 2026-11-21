@@ -184,5 +184,5 @@ The poll-driven critical alert path was not re-traced in this run. Its `store in
 
 - **Key A** (Waspada, then Awas, both readable after the rule change): both recovered; `processed_at` of version 1 (17:04:29.797) is before version 2 (17:04:29.867); exactly one stored event, with the newer level AWAS.
 - **Key B** (the first version stays unreadable after the rule change: `alert_level` not a level): neither version processed, no event stored; the replay answered `scanned 16, recovered 2, blocked_by_key 1, still_failed 13` (the other 12 failed messages are the earlier real parked PVMBG messages).
-- The script removes its own `ORD-` test messages and events and turns the schema rule off again (verified: no `ORD-` documents left).
+- The script removes its own `ORD-` test messages and events and turns the schema rule off again. Two earlier aborted runs of the script (the tool did not exit) had left one `ORD-` key behind; it was removed with `inbox-tool purge`, and a final count shows no `ORD-` message or event left.
 - A new field `processed_at` is stored on every inbox message when it is marked processed (`MongoRawInbox.markProcessed`).
