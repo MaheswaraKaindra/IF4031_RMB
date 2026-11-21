@@ -177,3 +177,12 @@ New child spans: `store ingest` / `store accept field report` (the store write) 
 | 373 | 60 | aggregator | `POST /internal/deliveries/ack` | broker publish |
 
 The poll-driven critical alert path was not re-traced in this run. Its `store ingest` span is a child of the `poll`/`coastal critical ingest` span in the same way (covered by the unit tests only; a Jaeger capture of a coastal alert is not verified).
+
+## P3 per-key replay order on the cluster, 2026-11-22 (P3 criterion 4)
+
+`scripts/k8s/p3-order.sh` (5 checks, all PASS). The versions are stored in the parked inbox by `dist/tools/inbox-tool.js` the way the aggregator parks an unreadable message, because the PVMBG mock cannot serve several versions of one report. The last version is stored first, but with the latest received time, so only an ordered replay gives the right result.
+
+- **Key A** (Waspada, then Awas, both readable after the rule change): both recovered; `processed_at` of version 1 (17:04:29.797) is before version 2 (17:04:29.867); exactly one stored event, with the newer level AWAS.
+- **Key B** (the first version stays unreadable after the rule change: `alert_level` not a level): neither version processed, no event stored; the replay answered `scanned 16, recovered 2, blocked_by_key 1, still_failed 13` (the other 12 failed messages are the earlier real parked PVMBG messages).
+- The script removes its own `ORD-` test messages and events and turns the schema rule off again (verified: no `ORD-` documents left).
+- A new field `processed_at` is stored on every inbox message when it is marked processed (`MongoRawInbox.markProcessed`).

@@ -245,7 +245,7 @@ export class MongoRawInbox implements RawInboxStore {
     async markProcessed(messageId: string, claimToken?: string | undefined): Promise<boolean> {
         const filter = claimToken ? { _id: messageId, claim_token: claimToken } : { _id: messageId };
         const res = await this.coll().updateOne(filter, {
-            $set: { status: 'processed', retryable: false },
+            $set: { status: 'processed', retryable: false, processed_at: new Date().toISOString() },
             $unset: { claim_token: '', claim_expires_at: '', next_attempt_at: '' },
         });
         return res.modifiedCount > 0;
