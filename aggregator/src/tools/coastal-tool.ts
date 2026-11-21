@@ -34,6 +34,22 @@ function offsetOf(cursor: string | undefined): number | null {
     }
 }
 
+// Offset (ms) of the store's clock minus this machine's clock, from the round trip with the smallest delay out of several.
+async function clockOffsetMs(db: ReturnType<MongoClient['db']>): Promise<number> {
+    let best = Number.POSITIVE_INFINITY;
+    let bestRtt = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 7; i++) {
+        const t0 = Date.now();
+        const hello = (await db.admin().command({ isMaster: 1 })) as { localTime?: Date };
+        const t1 = Date.now();
+        if (hello.localTime && t1 - t0 < bestRtt) {
+            bestRtt = t1 - t0;
+            best = hello.localTime.getTime() - (t0 + t1) / 2;
+        }
+    }
+    return Number.isFinite(best) ? best : 0;
+}
+
 // Emission side of the end-to-end measurement against the fake sensor: ids and emission times, kept on this machine's clock.
 async function emit(): Promise<void> {
     const n = Number(flag('n', '750'));
@@ -43,6 +59,19 @@ async function emit(): Promise<void> {
     const run = Date.now().toString(36);
     const out: Record<string, number> = {};
     let skipped = 0;
+    // This machine's clock can drift against the VMs (WSL does): measure the offset while emitting, and again at the end, so the latency
+    // is corrected with the offset that applied when the alerts were emitted.
+    let offsetStart: number | undefined;
+    let mongo: MongoClient | undefined;
+    if (process.env.MONGO_URI) {
+        try {
+            mongo = new MongoClient(process.env.MONGO_URI);
+            await mongo.connect();
+            offsetStart = await clockOffsetMs(mongo.db(flag('db', 'bnpb_canonical_store')));
+        } catch {
+            mongo = undefined;
+        }
+    }
     const t0 = Date.now();
     for (let i = 0; i < n; i++) {
         const id = `fk-c-${run}-${i}`;
@@ -58,9 +87,19 @@ async function emit(): Promise<void> {
         const due = t0 + ((i + 1) * 1000) / rate;
         if (due > Date.now()) await new Promise((r) => setTimeout(r, due - Date.now()));
     }
+    let offsetEnd: number | undefined;
+    if (mongo) {
+        try {
+            offsetEnd = await clockOffsetMs(mongo.db(flag('db', 'bnpb_canonical_store')));
+        } catch {
+            offsetEnd = undefined;
+        }
+        await mongo.close().catch(() => undefined);
+    }
+    const offsets = [offsetStart, offsetEnd].filter((v): v is number => v !== undefined);
     const file = flag('out', '');
-    if (file) writeFileSync(file, JSON.stringify(out));
-    console.log(JSON.stringify({ run, emitted: Object.keys(out).length, skipped }));
+    if (file) writeFileSync(file, JSON.stringify({ ...out, ...(offsets.length ? { __clock_offset_ms: offsets.reduce((a, b) => a + b, 0) / offsets.length } : {}) }));
+    console.log(JSON.stringify({ run, emitted: Object.keys(out).length, skipped, clock_offset_start_ms: offsetStart, clock_offset_end_ms: offsetEnd }));
 }
 
 async function main(): Promise<void> {
@@ -97,17 +136,10 @@ async function latency(db: ReturnType<MongoClient['db']>, deadline: number): Pro
     const file = flag('emitted', '');
     if (!file) throw new Error('--emitted <file written by emit> is required');
     const emitted = JSON.parse(readFileSync(file, 'utf8')) as Record<string, number>;
-    let offset = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < 5; i++) {
-        const t0 = Date.now();
-        const hello = (await db.admin().command({ isMaster: 1 })) as { localTime?: Date };
-        const t1 = Date.now();
-        if (hello.localTime) {
-            const est = hello.localTime.getTime() - (t0 + t1) / 2;
-            if (Math.abs(est) < Math.abs(offset)) offset = est;
-        }
-    }
-    if (!Number.isFinite(offset)) offset = 0;
+    // The offset measured while the alerts were emitted is the one that applies to their timestamps; fall back to measuring now.
+    const stored = emitted['__clock_offset_ms'];
+    delete emitted['__clock_offset_ms'];
+    const offset = typeof stored === 'number' ? stored : await clockOffsetMs(db);
     const ids = Object.keys(emitted);
     const entries = (await db.collection('coastal_deliveries').find({ hazard_id: { $in: ids } }, { projection: { event: 0 } }).toArray()) as unknown as DeliveryEntry[];
     const byId = new Map(entries.map((e) => [e.hazard_id, e]));
