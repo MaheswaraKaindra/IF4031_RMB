@@ -406,14 +406,17 @@ dibangkitkan dari PC ini (k6 membutuhkan >20 GB), sehingga hasil dilaporkan pada
 
 - Bukti dari 3 VM nyata: `docs/evidence/pc-run-phase1.md` (P1), `docs/evidence/pc-run-phase2.md` (P2-P5 dan integrasi) dan tabel di `docs/decisions/ADR-0001-storage.md`.
 - Store berjalan di MongoDB **4.4**, bukan 7: VM VirtualBox-on-Hyper-V tidak menyediakan instruksi AVX. Operator agregasi 5.0+ tidak boleh dipakai (kode pesisir memakai `$add` dengan `$$NOW`, bukan `$dateAdd`).
-- Pipeline satelit (P4) tidak menyala sampai `SATELLITE_GROUP_TOKEN` diisi; hanya diuji dengan tes unit.
+- Pipeline satelit (P4) aktif saat `SATELLITE_GROUP_TOKEN` diisi. Pengujian umpan asli, SIGKILL leader, dan kehilangan node tercatat di [bukti fase 2](docs/evidence/pc-run-phase2.md).
 - Tester Agent: skenario `schema` lulus. Skenario yang menyasar pod/node (`kill-leader`, `kill-store`, `wipe-node`, `clock-skew`, `partition`) tidak menemukan sasaran karena ketiga node adalah server k3s (control-plane) dan agen hanya menyasar node worker kecuali diizinkan; perlu keputusan topologi (node B/C sebagai agent) atau cara mengizinkan.
 - Kapasitas jalur baca sekitar 100-150 req/s pada 3 VM satu PC (lihat di atas); 10.000 VU tidak tercapai.
 - Observability: metrik dan jejak ada untuk aggregator, client-api, auth, consumer, serta metrik RabbitMQ dan MongoDB per shard; mock, store, broker, dan sensor belum menghasilkan span.
 - Skrip `scripts/p2..p4` dan `script-ps-*` hanya untuk Docker Compose.
 
+Lihat [deviasi Milestone 2](docs/deviations.md) dan [SLO layanan pesisir](docs/slo.md).
+
 ## Asumsi dan batasan yang disadari
 
+- Seri dashboard `TSUNAMI` adalah bagian dari `SEISMIC` dengan `attributes.potential_tsunami === true` atau `attributes.tsunami_warning` terisi. Record tetap bertipe `SEISMIC` dan dihitung satu kali dalam total.
 - Bila satu event BMKG memiliki beberapa `TsunamiWarning`, warning terkuat yang dipakai (Awas mengalahkan Siaga dan Waspada, sesama kuat dipilih yang terbit paling akhir). Warning yang lebih lemah dan datang belakangan tidak menurunkan severity.
 - Field sumber yang berubah tipe (misalnya angka menjadi teks) disimpan apa adanya di `attributes`. Field yang dihapus atau diganti nama pada field yang dipetakan (`alert_level`) membuat record itu dilewati dan dicatat di log, tanpa menghentikan record lain.
 - Percobaan gagal ke `/token` dan `/refresh` dibatasi per alamat dan disimpan di memori, sehingga client di balik NAT yang sama berbagi batas dan batas hilang saat Auth Service restart.

@@ -8,7 +8,7 @@ satellite and coastal pipelines (P4, P5), merged without touching the owners' ow
 
 | Check | Result |
 |---|---|
-| Unit tests | aggregator 106/106, client-api 6/6 (run one file at a time with a per-test timeout) |
+| Unit tests | aggregator 138/138 in the latest suite, client-api 6/6 in the integration run (sequential, per-file timeout) |
 | One-command deploy from an EMPTY namespace | `scripts/deploy.sh demo` rebuilt the whole system, with no manual step, in 452 s counted from deleting the namespace (including all PVCs and data); 40 pods Ready |
 | `verify-resources`, `verify-isolation`, `smoke`, `p2-placement`, `p2-single-fetch` on the rebuilt system | all pass |
 | Broker | RabbitMQ is a 3-node cluster (Owner C) with quorum queues; Prometheus scrapes it |
@@ -16,13 +16,23 @@ satellite and coastal pipelines (P4, P5), merged without touching the owners' ow
 
 ## Per criterion (real VMs unless stated)
 
+### P1 simulated earthquake catalog (Owner A)
+
+`store-tool catalog-gen --count 50000` generated earthquakes across 29 provinces, including aftershock bursts. The busiest one-degree cell held 2.2% of the input and the busiest province held 12.5%. `store-tool load --catalog` applied all 50,000 rows through the BMKG mapper in 120.19 s (416 writes/s).
+
+`p1-hotspot.sh` then applied all 20,000 Sumatera Barat writes in 46.55 s (430 writes/s). Primary write counters increased by 7,103, 6,855 and 6,957. The max/min ratio was **1.036**, below the pass threshold of 2.
+
+`p1-report.sh` reported 233,505 logical records under live ingestion and a maximum node share of **0.667**. The four source checksums were complete, all three shards were available and redundant, and the sample location returned both a primary and a replica.
+
+After the measurements, a user-approved cleanup removed the 90,000 hazards with a `SYN-` source reference (63,263 BMKG, 13,469 PVMBG, 8,727 SATELIT, 4,541 SENSOR_PANTAI). MongoDB acknowledged the deletion at `w:2`. A follow-up count found zero `SYN-` records and all 50,000 catalog records.
+
 ### P2 (Owner B)
 | # | Criterion | Result | Measured |
 |---|---|---|---|
 | 1 | >= 3 instances on different nodes, routing only to healthy ones | PASS | `p2-placement.sh`: replicas on 3 nodes (hard spread with `matchLabelKeys`), readiness probe, Service endpoints = Ready pods |
 | 2 | each source fetched exactly once | PASS | `p2-single-fetch.sh`: 0 duplicates in the store, one caller per mock = the Lease holder, poll rate not multiplied |
-| 3 | failover <= 60 s, no gap, no duplicate | PASS | `p2-failover.sh` (node of the leader powered off): takeover **20.2 s**, exactly one leadership change, longest upstream pause 6.8 s, 0 duplicates, 0 records lost. Before two fixes (below) it took 38 s, flapped and stalled polling for about 2 minutes |
-| 4 | clock shift +45 s then -30 s | PASS | `p2-clock-skew.sh`: 0 leadership changes, never two valid leaders in 54 samples, 0 duplicates. Before the lease fix the same test gave 10 leadership changes in 3 minutes |
+| 3 | failover <= 60 s, no gap, no duplicate | PASS | `p2-failover.sh` (node of the leader powered off): takeover **20.2 s**, exactly one leadership change, longest upstream pause 6.8 s, 0 duplicates, 0 records lost. A later real power-off run measured takeover of all four leased sources in 24–26 s with 0 duplicates and 0 lost. Before two fixes (below) it took 38 s, flapped and stalled polling for about 2 minutes |
+| 4 | clock shift +45 s then -30 s | PASS | `p2-clock-skew.sh`: 0 leadership changes, 0 overlapping leaders and 0 duplicates in 80+ sampled rounds in the later run. Polling now overlaps the previous cursor by 120 s and the test compares stored IDs with mock events produced during the run. Before the lease fix the same test gave 10 leadership changes in 3 minutes |
 | 5 | frozen node wakes up | PASS | `p2-freeze.sh` (VM paused 28 s, then resumed): the old leader stopped acting as leader within ~1 s, made 0 upstream polls, 0 duplicates, 0 records lost |
 | 6 | sustained load while scaling 3-5-2-3 | PASS at a sustainable rate | `p2-load.sh` at a fixed 60 req/s for 150 s: 10,290 requests, 0.76% errors (< 1%), criterion 2 still holds. **Not** at 10,000 VU, see below |
 | 7 | throughput with 3 instances >= 2.0x one instance | NOT DEMONSTRATED | at saturation the successful rate was 22 vs 52 req/s (2.34x) in one run and 564 vs 403 req/s (0.72x) in another, with 12-51% failures: the platform is saturated by network overhead, not by the aggregator, so the ratio is not a valid measurement |
@@ -34,9 +44,9 @@ req/s (p50 23 ms, p95 65 ms at 100 req/s, 0 failures); at 200 req/s it collapses
 generated from this PC (k6 needs more memory than the host can spare next to 21 GB of VMs), so the results are reported at the sustainable rate.
 
 ### P3 (Owner B)
-`p3-checks.sh`: 24 of 24 checks pass, also on the rebuilt system. Additive schema change accepted; rename, type change and missing field parked with
+`p3-checks.sh`: 33 of 33 checks passed in the latest run. Schema rules propagated to all replicas and survived a pod restart. Additive schema change accepted; rename, type change and missing field parked with
 reason, source, time and `retryable:false`; 4 malformed payload kinds (truncated, deeply nested, invalid UTF-8, oversized) parked whole, 0 restarts, BMKG kept flowing;
-replay recovered what a rule change can recover (the rest stays parked), 0 duplicates; Ops-only access (403, 403, 200); 20/20 field reports answered 202 in under 1 s with the broker
+replay recovered what a rule change can recover (the rest stays parked), 0 duplicates and no further recoveries on a second replay; Ops-only access (403, 403, 200); 20/20 field reports answered 202 in under 1 s with the broker
 down and all aggregator pods killed right after, 0 lost, 0 doubled. Not asserted on the cluster: per-key ordering after replay.
 
 ### P5 (Owner C), real sensor image and fake sensor
@@ -47,8 +57,31 @@ down and all aggregator pods killed right after, 0 lost, 0 doubled. Not asserted
 | `p5-checks.sh`, six fake-sensor modes (slow, blackhole, status 503, malformed, stale, frozen) | 6 of 6 pass: other sources kept ~30 ms (SEISMIC p95 < 33 ms), a sensor-dependent request answered in < 35 ms, requests to the sick sensor dropped to 8-13 per 40 s (baseline 39), the sensor was used again 1-3 s after recovery, no intervention |
 | Not run | P5.6 and P5.8 (unannounced combined failures, game day) need the Tester Agent exam scenarios |
 
+#### Critical alert latency from sensor emission
+
+`p5-latency.sh` uses a fake sensor at 5 alerts/s and measures from emission to acknowledgement.
+
+| Scenario | Acknowledged | Latency and result |
+|---|---:|---|
+| Baseline | 300/300 | p95 1.59 s. Pass. |
+| Leader-process crash | 400/400 | p95 2.57 s. Pass. |
+| Real leader-node power-off | 300/300 | p50 9.4 s, p95 34 s, maximum 37 s. All acknowledged 20 s after emission ended. 196 of 300 missed 5 s. |
+
+The node-loss run used `SCENARIO=node-loss N=300 RATE=5 FAIL_AT_S=25 COMPLETE_MAX_S=90 scripts/k8s/p5-latency.sh`. In earlier runs 302 of 500 alerts were missing from the ledger and subsequently 195 of 300 remained unacknowledged. The verified run included degraded write concerns for the ledger, feed log and late store, immediate degraded-mode canonical writes, non-blocking fast publish, and fresh-connection ACK retries with reactive degradation on a write-concern timeout (through `b868336`).
+
+The measured coastal leader gap was 30–38 s, with approximately 16 s to detect node loss, stale Service endpoints and an 8 s coastal lease. The 104 alerts sent before power-off were on time. The latest run met the zero-loss criterion and exceeded the 5 s p95 deadline. The 196 misses consumed 6,533% of the 1% test-window timeliness budget. See [coastal service objectives](../slo.md).
+
+#### P5 priority under Media load
+
+On an idle cluster (normal background ingestion, no concurrent test, pre-test node CPU 21–31%), k6 ran for 40 s with 100 Media read VUs, 10 Tim Lapangan read VUs and 3 Tim Lapangan field-report VUs. Media received 1,395 HTTP 429s. Tim Lapangan reads received 0 HTTP 429s and 351 HTTP 200s. Read p95 was **1.88 s** against the test threshold of <1 s. The API accepted **105 of 107** field reports and refused 2, against a threshold of zero refusals. k6 exited 99 with `thresholds on metrics 'http_req_duration{client:field_team}, refused_field_report' have been crossed`. Three reads across both classes returned a status other than 200 or 429. The earlier busy-cluster run measured about 2.3 s read p95 and 3 of 82 field reports refused.
+
 ### P4 (Owner C)
-Implemented and unit-tested (satellite tests pass) but **not run against the feed**: `SATELLITE_GROUP_TOKEN` is not available, so the pipeline stays off by design. `satellite-tool` needs the token.
+
+| Check | Result |
+|---|---|
+| Real satellite feed | 1.17 million frames processed. Independent batch comparison found 18,378 matching fires, with 0 missing, 0 extra and 0 different. |
+| Leader SIGKILL and real node power-off | New leader processing in 8 s and 57 s, respectively. Feed log contiguous through 1,189,412 frames and epoch advanced. |
+| State rebuild | Processor snapshot reduced rebuild from 195 s to 0.3 s. |
 
 ### Tester Agent
 Installed unmodified (digest verified). `schema` passes end to end after a fix (below); the other five practice scenarios (`kill-leader`, `kill-store`, `wipe-node`, `clock-skew`,
@@ -77,7 +110,7 @@ Jaeger shows traces across client-api, aggregator and the three consumers. Gaps:
 
 ## Open issues
 - Tester Agent scenarios other than `schema` (decision above); exam scenarios need the key given at the demo.
-- P4 against the real feed needs the satellite token; P5.6/P5.8 need the Tester Agent.
+- P5 timeliness under whole-node loss and field-team read latency and report acceptance under the tested Media load miss their thresholds. P5.6/P5.8 need the Tester Agent.
 - 10,000 VU and the 2.0x throughput ratio cannot be shown on this hardware.
 - Owner C's satellite suite had a flaky test (`crash after the checkpoint ... same final set`) and a hang once under the parallel runner; both disappeared with sequential execution, cause not isolated.
 - Analytics dashboard in a browser (banner and compare button) was verified at API and HTML level only.
