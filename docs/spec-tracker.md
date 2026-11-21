@@ -15,7 +15,7 @@ Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
 | 1.2 | Show how the system handles the dataset's natural skew; measure per-node load while loading and during a regional burst | Yes (simulated hot zones, Sumatra burst) | PASS* (simulated) | `p1-hotspot.sh`, `store-tool burst` | Per-node load before/after the burst; screenshot |
 | 1.3 | Cross-location query ("50 newest of all hazards") with pagination and correct order | Yes | PASS | `p1-query.sh` | Request/response excerpt, order check output |
 | 1.4 | Node worker killed and its data erased: no HazardEvent lost (checked through Audit API against the assistants' checksum); every request answered complete or explicitly partial, never 500 or hang | Real power-off and empty-volume replacement; nothing lost against our own baseline | PASS* | `p1-node-loss.sh`, `p1-probe-loss.sh`, `p1-unit-loss.sh`. Real power-off probes after the SRV change: 358/360 and 353/360 OK. Limits: a request through a NodePort can still reach a dead pod for about 16 s; `analytics`/`checksum` full scans take 2.4-6.6 s | Probe timeline, partial-answer example, lost = 0 output; official checksum WAITING |
-| 1.5 | New or emptied node takes over data and load without stopping writes or reads | Reads: empty-volume replacement of slot 3. Writes: real power-off (264/264 accepted, all stored) | PARTIAL: writes not measured during the empty-volume re-sync itself | `p1-node-loss.sh 3`, `p1-write-probe.sh` | Re-sync log, redundancy output, write probe output |
+| 1.5 | New or emptied node takes over data and load without stopping writes or reads | Yes: empty-volume replacement of slot 3 with writes and reads running (488/488 writes accepted and stored, 57 complete reads, 0 bad); writes also through a real power-off (264/264) | PASS | `p1-node-loss.sh 3`, `p1-write-probe.sh` | Re-sync log, redundancy output, write probe output |
 | 1.6 | After 1.4 and 1.5 the system survives the next node loss | Yes (slot 2 power-off after slot 3 re-synced; nothing lost) | PASS* (the three failed probes of that run were before the SRV change) | evidence section "P1 empty-volume replacement and subsequent node loss" | Output of the second loss |
 | 1.7 | Browser analytics dashboard: line chart per hazard type with time range, count per severity, count per area; numbers equal the Audit API; marked incomplete when a node is down | Page and partial flag exist; NOT checked in a browser | NOT TESTED in a browser (user) | `aggregator/src/storage/analyticsPage.ts` | Screenshots: normal, and with a node down showing the incomplete banner; numbers next to the Audit API output |
 | 1.R | Report items: problem name and concept, mechanism and placement rule, two alternatives, per-endpoint consistency, how dashboard numbers are computed and flagged | n/a | Text, user-supervised | `docs/report-draft.md`, `docs/decisions/ADR-0001-storage.md` | Written text |
@@ -97,7 +97,7 @@ Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
 ## What is still open
 
 1. P2 criteria 6-8 (10,000 VU, 3x vs 1x, version swap): the kind run, last.
-2. P1.5 write continuity during an empty-volume re-sync; browser check of 1.7.
+2. Browser check of 1.7.
 3. P5.5 latency threshold (field-team read p95 above 1 s under the flood) and verification of the field-report retry.
 4. P5.2 quarantine screenshots, P5.3 M1 workload on Kubernetes, G.3 contract check, G.5 bonus (optional).
 5. README completeness.

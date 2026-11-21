@@ -207,3 +207,11 @@ Change: client-api now repeats that POST once (3 s limit, `FIELD_REPORT_RETRY_TI
 - **Before the change:** 222 writes, 216 answered 202. Six were refused (four HTTP 503 after about 1.5 s, two curl timeouts at 10 s) between 13 s and 42 s after the power-off. Cause: `MongoFieldReportOutbox.accept` waited for its write concern (`w:2`, 1.5 s) and answered 503 on the timeout, and unlike the other bookkeeping writes it never switched the store to degraded mode. (The store check at the end of that run died on a script bug, so it gave no result.)
 - **Change:** a write concern timeout in `accept` now enters degraded mode (`noteBookkeepingFailure`, `w:1`, single copy until the member returns) and stores the report again; if the first insert had in fact been applied, the repeat is answered as an accepted duplicate (2 unit tests).
 - **After the change:** 264 of 264 writes answered 202 (p50 0.02 s, p95 0.04 s, max 2.03 s, five answers over 1 s); all 264 are in the store, none twice. Single run, one node (node-d). The same probe was not run during the empty-volume replacement of a node.
+
+## P1 writes and reads during an empty-volume replacement, 2026-11-22 (P1 criterion 5)
+
+`scripts/k8s/p1-write-probe.sh 270 "scripts/k8s/p1-node-loss.sh 3"`: a field report every 0.5 s through the node-a NodePort while `p1-node-loss.sh 3` stopped the store members of slot 3 (mongo-s2-b, mongo-s3-a, ...), replaced their volumes with new empty ones and let them re-sync.
+
+- **Writes:** 488 sent, 488 answered 202 (p50 0.03 s, p95 0.06 s, max 1.05 s, three answers over 1 s). All 488 are in the store, none twice.
+- **Reads (same run, from `p1-node-loss.sh`):** 57 complete Audit API or analytics answers, 0 partial, 19 client API reads, 0 slower than 2 s, 0 bad. Records before 150,176, after 150,617, lost 0; redundancy was restored.
+- Single run, slot 3.
