@@ -65,7 +65,7 @@ Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
 | ID | Requirement | Tested | Status | Evidence / script | Proof for the report |
 |---|---|---|---|---|---|
 | 5.1 | Every critical event reaches the Tim Lapangan receiver: 0 lost, p95 <= 5 s | Baseline 300/300 p95 1.59 s; leader process crash 400/400 p95 2.57 s; real leader-node power-off 300/300 delivered, p95 34 s | PASS for baseline and crash; node loss: 0 lost but p95 above 5 s (accepted as a known limit, to be stated in the report assumptions) | `p5-latency.sh` | Latency output per scenario; reliability budget |
-| 5.2 | Data violating the base contract is not stored as HazardEvent but set aside with a reason | Yes (fake sensor modes, quarantine path); reasons NOT shown as a screenshot yet | PARTIAL: evidence capture pending | `p5-checks.sh`, quarantine metrics | Listing of quarantined records with reasons |
+| 5.2 | Data violating the base contract is not stored as HazardEvent but set aside with a reason | Yes: 5 injected contract-breaking items all quarantined (reasons `missing_field:*`, `out_of_range:wave_height_m`), 0 stored | PASS* (not every injected violation type is shown under its own reason) | `p5-quarantine.sh` | The Ops listing with reasons, event count before/after |
 | 5.3 | While the sensor is sick, other sources keep meeting the M1 latency criteria | Yes. Sequential probes: SEISMIC p95 < 33 ms in six fault modes. The M1 k6 workload (50 VUs): a sick sensor is no worse than a healthy one, but the M1 target (p95 < 300 ms) is NOT met even with a healthy sensor (p95 1.07-1.38 s, about 55 req/s limit of the VMs) | PARTIAL: not degraded by the sensor, but the absolute M1 numbers fail at 50 VUs on these VMs | `p5-checks.sh`, `p5-m1-load.sh` | Both outputs; say it is a capacity limit |
 | 5.4 | While the sensor is unhealthy, requests to it do not surge; dependent client requests answered fast with last data or an unavailable status; automatic return after recovery | Yes (8-13 requests per 40 s against 39 at baseline; reused 1-3 s after recovery) | PASS | `p5-checks.sh` | Request counts, breaker transitions, cached/unavailable answer example |
 | 5.5 | Over capacity: Tim Lapangan served, Media rejected in a controlled way | Yes: Tim Lapangan got 0 HTTP 429 and all reads served; Media got 1,578 and 23,184 HTTP 429s in two runs. Our own 1 s read p95 target was missed (1.94-1.99 s) and in one run 5 of 61 field reports were refused after two attempts | PASS* for the spec wording; our 1 s target FAIL, a CPU capacity limit of the VMs (state it in the report) | `load-test/p5-priority.js`, section "P5 priority under a Media flood" | k6 output for both outcomes; the limit explained |
@@ -99,6 +99,6 @@ Last updated 2026-11-22, after the sweep (commit `fd03772` and later).
 1. P2 criteria 6-8 (10,000 VU, 3x vs 1x, version swap): the kind run, last.
 2. Browser check of 1.7.
 3. Nothing further on P5.5 unless priority handling is added inside the aggregator.
-4. P5.2 quarantine screenshots, P5.3 M1 workload on Kubernetes, G.3 contract check, G.5 bonus (optional).
+4. G.3 contract check, G.5 bonus (optional).
 5. README completeness.
 6. After the deadline: official catalog, checksum, reference, Audit credential, Tester Agent key, load-test script; node-loss p95 for 5.1 stays a documented limit.
