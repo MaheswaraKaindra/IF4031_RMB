@@ -423,7 +423,7 @@ dibangkitkan dari PC ini (k6 membutuhkan >20 GB), sehingga hasil dilaporkan pada
 - `/internal/*` pada Aggregator tidak memakai autentikasi, hanya terlindungi network `api`.
 - Event yang gagal dipublikasikan karena broker mati ditampung di memori Aggregator dan dikirim setelah koneksi pulih. Jika Aggregator sendiri restart saat broker mati, event tersebut tidak terkirim (datanya tetap ada di store).
 - Restart mock mengembalikan toggle schema dan outage ke default. Id record baru unik per proses, sehingga tidak menimpa data yang sudah tersimpan.
-- Aggregator memakai user root MongoDB. Kedua consumer berbagi satu folder `consumers/` dan satu Dockerfile, dibangun sebagai dua service.
+- Di Docker Compose (M1) aggregator memakai user root MongoDB; di Kubernetes (store sharded) aggregator memakai user `aggregator` dengan hak readWrite pada satu database, dan user `probe` hanya untuk membaca status anggota. Kedua consumer berbagi satu folder `consumers/` dan satu Dockerfile, dibangun sebagai dua service.
 
 ## Penggunaan LLM
 
