@@ -1,0 +1,27 @@
+\phantomsection
+\addcontentsline{toc}{section}{Tabel Kontribusi}
+\section*{Tabel Kontribusi}
+
+\begingroup
+\setcounter{table}{0}
+\renewcommand{\thetable}{K.\arabic{table}}
+\textbf{Tabel~\ref{tab:kontribusi-m2}} merangkum pembagian peran pengembangan serta verifikasi sistem oleh masing-masing anggota Kelompok 11 pada Milestone 2.
+
+\begin{table}[H]
+  \centering
+  \caption{Pembagian Kontribusi Anggota Kelompok pada Milestone 2}
+  \label{tab:kontribusi-m2}
+  \small
+  \begin{tabularx}{\linewidth}{@{} l l >{\raggedright\arraybackslash}X @{}}
+    \toprule
+    \textbf{NIM} & \textbf{Nama} & \textbf{Kontribusi} \\
+    \midrule
+    13523013 & Nathaniel Jonathan Rusli & Infrastruktur klaster \textit{k3s} multi-VM, penyimpanan terdistribusi \textit{MongoDB Sharded Cluster} (Problem 1), Audit API dan dasbor analitik, skrip \textit{deploy} terpadu, observabilitas dasar, serta integrasi klaster fase akhir. \\
+    \midrule
+    13523015 & Maheswara Bayu Kaindra & Penskalaan horizontal dan pemilihan pemimpin per sumber ber-\textit{epoch fencing} (Problem 2), evolusi skema PVMBG, \textit{bounded parser}, karantina \path{raw_inbox}, \textit{ordered replay}, serta \textit{atomic outbox} laporan lapangan (Problem 3). \\
+    \midrule
+    13523037 & Buege Mahara Putra & Pemrosesan aliran satelit SSE ber-\textit{event time} (Problem 4), ketahanan Sensor Pantai, \textit{bulkhead}, \textit{circuit breaker}, serta \textit{delivery ledger} (Problem 5), klaster RabbitMQ tiga \textit{node} ber-\textit{quorum queue}, \textit{priority admission}, dasbor Grafana P4 dan P5, serta HPA. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+\endgroup

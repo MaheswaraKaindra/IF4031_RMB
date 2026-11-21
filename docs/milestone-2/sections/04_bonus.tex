@@ -1,0 +1,25 @@
+\section{Fitur Bonus}
+
+Sesuai ketentuan Milestone 2, setiap fitur bonus wajib diimplementasikan dalam kode sumber dan dijelaskan di laporan. Dari tiga kategori bonus yang ditawarkan, kelompok hanya mengimplementasikan kategori kapasitas yang menyesuaikan diri secara otomatis.
+
+\subsection{\textit{Node} pada Host Fisik Berbeda}
+
+Fitur bonus ini \textbf{tidak diimplementasikan}. Ketiga \textit{node} VM klaster (\texttt{node-a}, \texttt{node-c}, dan \texttt{node-d}) memiliki kernel sistem operasi serta disk lokal terpisah, tetapi seluruhnya masih berjalan di atas satu komputer host fisik.
+
+\subsection{Komponen \textit{AI-Native}}
+
+Fitur bonus ini \textbf{tidak diimplementasikan}. Seluruh mekanisme validasi skema PVMBG, pengklasteran titik panas satelit, serta pemeriksaan kesegaran Sensor Pantai dijalankan memakai logika algoritmis deterministik tanpa model \textit{machine learning} atau LLM.
+
+\subsection{Kapasitas yang Menyesuaikan Diri (\textit{Autoscaling})}
+
+Fitur bonus ini \textbf{diimplementasikan} di dalam kode dan konfigurasi klaster melalui \texttt{HorizontalPodAutoscaler} (\texttt{autoscaling/v2}) pada berkas \path{k8s/overlays/demo/hpa.yaml}. Penskalaan otomatis diterapkan pada dua layanan inti tanpa \textit{state} penyimpanan lokal, yaitu \texttt{aggregator} dan \texttt{client-api}:
+
+\begin{itemize}
+  \item \textbf{\texttt{aggregator-hpa}:} menskalakan \textit{Deployment} \texttt{aggregator} antara minimal \texttt{3} hingga maksimal \texttt{6} replika dengan target pemakaian CPU rata-rata $60\%$. Batas minimum tiga replika menjaga ketentuan Problem 2 agar selalu ada tiga instans tersebar di tiga VM berbeda.
+  \item \textbf{\texttt{client-api-hpa}:} menskalakan \textit{Deployment} \texttt{client-api} antara minimal \texttt{2} hingga maksimal \texttt{6} replika memakai target utilisasi CPU rata-rata $60\%$.
+  \item \textbf{Kebijakan kenaikan dan penurunan:} ketika CPU melampaui ambang, HPA dapat menambah hingga dua \textit{pod} tiap 15 detik dengan masa stabilisasi 15 detik. Saat beban kembali reda, HPA menurunkan maksimal satu \textit{pod} tiap 30 detik sesudah menunggu masa stabilisasi 45 detik agar jumlah replika tidak naik turun terlalu cepat (\textit{flapping}).
+\end{itemize}
+
+Pada skrip pengujian penskalaan manual seperti \path{scripts/k8s/p2-load.sh}, konfigurasi \texttt{aggregator-hpa} disimpan sementara lalu dipulihkan kembali setelah skenario selesai agar pengubahan jumlah replika manual ($3 \to 5 \to 2$) tidak bertabrakan dengan penskalaan otomatis HPA.
+
+\slotgambar{Bukti Penskalaan Otomatis HPA}{Bukti Pertambahan dan Penurunan Replika Mengikuti Beban}
