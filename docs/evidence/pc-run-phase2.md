@@ -115,3 +115,27 @@ Jaeger shows traces across client-api, aggregator and the three consumers. Gaps:
 - Owner C's satellite suite had a flaky test (`crash after the checkpoint ... same final set`) and a hang once under the parallel runner; both disappeared with sequential execution, cause not isolated.
 - Analytics dashboard in a browser (banner and compare button) was verified at API and HTML level only.
 - Per-key ordering after replay, spans for mocks, store, broker and sensor.
+
+## Targeted re-test on 2026-11-21
+
+### P5 priority diagnosis
+
+Both 40 s runs used 10 field-read VUs and 3 field-report VUs. The temporary instrumentation logged status and correlation ID on report failure without recording credentials or request bodies.
+
+| Media VUs | Field-team read p95 | Reports accepted | Field-team read 429s | Media 429s | Result |
+|---:|---:|---:|---:|---:|---|
+| 60 | 1.272 s | 200/200 | 0 | 495 | k6 exit 99, read latency threshold exceeded |
+| 100 | 1.465 s | 191/191 | 0 | 0 | k6 exit 99, read latency threshold exceeded |
+
+The first run started with 47 active pods and the second with 54, so the results do not isolate the effect of Media VUs. The 100-VU run did not demonstrate controlled Media rejection. Retained client-api logs from the earlier idle run identify one of its two refused reports as HTTP 503 following a 2,018 ms failed call to the aggregator. The second refusal's status was not recovered. The evidence identifies a timeout on the aggregator call in one case and does not establish an admission-control defect.
+
+### P1 simulated catalog and placement
+
+A read-only recheck counted all 50,000 catalog records and zero synthetic-prefix records. `p1-report.sh` showed 144,477 logical records, a maximum node share of 0.667, and all three shards available and redundant. The original 20,000-write hotspot pass (ratio 1.036) remains the surge evidence. The recheck preserved the post-cleanup dataset.
+
+### P1 empty-volume replacement and subsequent node loss
+
+- **Slot 3, node-c, empty-volume replacement.** `p1-node-loss.sh 3` replaced all four store-member PVCs with new claims and restored both data copies on every shard. The test saw 59 complete and one explicitly partial Audit API or analytics response, plus 20 successful client API reads. There were zero bad or slow responses. It listed 144,513 records before and 144,619 after and found zero missing records in the ID containment check. The containment check excludes derived SATELIT fire records because the live feed can retract them. This phase wiped the slot's store volumes while the VM stayed on.
+- **Slot 2, node-d, subsequent real power-off.** The manual run after slot 3 re-synced returned 51 complete and one explicitly partial Audit API or analytics response, plus 17 successful client API reads. Three probes failed: `/internal/audit/checksum`, `/internal/audit/events?limit=50`, and client `/events` (curl status `000`). The availability check failed. VirtualBox restarted node-d, but the guest did not answer ping or rejoin k3s during the 210 s probe window. The script saved a 144,634-record pre-loss baseline and exited before the post-loss comparison. Post-loss integrity for this step is unverified pending recovery.
+
+The latest health check showed node-a and node-c Ready, node-d NotReady, and the aggregator, client API and auth deployments available. The Audit API reported all three shards available, with shards 1 and 2 lacking redundant data copies. One reset of node-d left the guest without network. The kind benchmark was held pending restoration of the VM cluster and the post-loss record comparison. No new 10,000-VU or one-versus-three replica result was measured in this sweep.
