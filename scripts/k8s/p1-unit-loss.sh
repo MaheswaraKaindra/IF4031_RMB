@@ -41,7 +41,7 @@ for m in $members; do kubectl -n "$NS" scale statefulset "$m" --replicas=1 >/dev
 for _ in $(seq 1 120); do redundancy_ok && break; sleep 5; done
 redundancy_ok || { echo "FAIL: redundancy not restored" >&2; exit 1; }
 collect_ids "$SNAP/ids-after"
-lost=$(LC_ALL=C comm -23 "$SNAP/ids-before" "$SNAP/ids-after" | wc -l | tr -d ' ')
+lost=$(lost_ids "$SNAP/ids-before" "$SNAP/ids-after" | wc -l | tr -d ' ')
 rc=0
 [ "$partial_audit" -gt 0 ] && [ "$complete_wrong" = 0 ] && echo "PASS: unreachable unit reported explicitly (partial:true, unavailable_units has shard-$SHARD)" || { echo "FAIL: partial marker missing" >&2; rc=1; }
 [ "$partial_analytics" -gt 0 ] && echo "PASS: analytics flagged incomplete (dashboard shows the warning banner)" || { echo "FAIL: analytics not flagged" >&2; rc=1; }

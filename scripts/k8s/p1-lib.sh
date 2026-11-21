@@ -110,6 +110,12 @@ snapshot() {
 # collect_ids <file>: sorted unique "source|source_ref_id" of every stored record, via the Audit API.
 # The PASS criterion for "no HazardEvent lost" is CONTAINMENT (before is a subset of after): the mocks and pollers keep
 # adding events during the test, so checksum equality would fail on healthy runs.
+# lost_ids <before> <after>: ids present before and absent after, ONE PER LINE. SATELIT wildfire records are excluded on purpose: a fire is
+# derived data and is legitimately removed when the feed retracts or shrinks it, so "gone" does not mean "lost". They are checked by
+# `satellite-tool reference` (independent recomputation from the durable feed log) and by p4-checks.sh instead.
+lost_ids() { LC_ALL=C comm -23 <(grep -v '^SATELIT|' "$1") <(grep -v '^SATELIT|' "$2"); }
+# satelit_gone <before> <after>: how many wildfire records disappeared (informational)
+satelit_gone() { LC_ALL=C comm -23 <(grep '^SATELIT|' "$1") <(grep '^SATELIT|' "$2") | wc -l | tr -d ' '; }
 collect_ids() {  # retries for up to ~2 min: right after a restore the answer can stay partial until the election/probe settle
   local f=$1 n
   for n in $(seq 1 24); do collect_ids_once "$f" && return 0; sleep 5; done

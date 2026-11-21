@@ -68,7 +68,7 @@ redundancy_ok || { echo "FAIL: redundancy not restored" >&2; exit 1; }
 echo "redundancy restored: $(members_json | jq -c 'group_by(.unit) | map({unit: .[0].unit, nodes: map(.node), counts: map(.count)})')"
 
 collect_ids "$SNAP/ids-after"
-lost=$(LC_ALL=C comm -23 "$SNAP/ids-before" "$SNAP/ids-after" | wc -l | tr -d ' ')
+lost=$(lost_ids "$SNAP/ids-before" "$SNAP/ids-after" | wc -l | tr -d ' ')
 echo "records before=$(wc -l < "$SNAP/ids-before" | tr -d ' ') after=$(wc -l < "$SNAP/ids-after" | tr -d ' ') lost=$lost"
 [ "$lost" = 0 ] && echo "PASS: slot $SLOT now on $NEW, nothing lost" || { echo "FAIL: $lost records lost" >&2; exit 1; }
 echo "next: scripts/k8s/p1-report.sh (placement) and p1-node-loss.sh on another slot (criterion 6)"

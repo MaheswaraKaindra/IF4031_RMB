@@ -74,7 +74,7 @@ redundancy_ok && echo "redundancy restored: $(members_json | jq -c 'group_by(.un
   || { echo "FAIL: redundancy not restored" >&2; exit 1; }
 
 collect_ids "$SNAP/ids-after"; snapshot "$SNAP/after.jsonl"
-lost=$(LC_ALL=C comm -23 "$SNAP/ids-before" "$SNAP/ids-after" | wc -l | tr -d ' ')
+lost=$(lost_ids "$SNAP/ids-before" "$SNAP/ids-after" | wc -l | tr -d ' ')
 echo "records before=$(wc -l < "$SNAP/ids-before" | tr -d ' ') after=$(wc -l < "$SNAP/ids-after" | tr -d ' ') lost=$lost"
 echo "after (evidence; counts may be higher because ingestion continued):"; jq -c . "$SNAP/after.jsonl"
 rc=0

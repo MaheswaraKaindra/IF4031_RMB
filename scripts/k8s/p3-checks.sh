@@ -20,6 +20,18 @@ restore() {
 trap restore EXIT
 
 ops() { mint bnpb-ops AUTH_CLIENT_BNPB_OPS_SECRET; }
+# A parked message's id is "msg-" + sha256("PVMBG\0" + sha256(raw bytes)) cut to 12 hex digits. So recomputing that id from the bytes the mock
+# serves right now proves the stored copy is the original, byte for byte (a changed or truncated copy would get another id).
+raw_preserved() { # raw_preserved <reason-prefix>: the mock's current response bytes map to a parked message with that reason
+  local pf rs mid ok=1
+  kubectl -n "$NS" port-forward svc/mock-pvmbg 18998:8082 >/dev/null 2>&1 & pf=$!
+  for _ in $(seq 1 20); do curl -s -m 1 -o /dev/null http://127.0.0.1:18998/health && break; sleep 0.5; done
+  curl -s -m 10 -H "Authorization: Bearer $(envget PVMBG_TOKEN)" "http://127.0.0.1:18998/volcanic-reports?since=" -o "$tmp/raw.bin" || true
+  kill "$pf" 2>/dev/null; wait "$pf" 2>/dev/null || true
+  rs=$(sha256sum "$tmp/raw.bin" | cut -d' ' -f1); mid="msg-$(printf 'PVMBG\0%s' "$rs" | sha256sum | cut -c1-12)"
+  parked | jq -e --arg m "$mid" --arg w "$1" 'any(.[]; .message_id==$m and (.reason|startswith($w)))' >/dev/null && ok=0
+  return $ok
+}
 parked() { curl -s -m 8 -H "Authorization: Bearer $(ops)" "$API_URL/unprocessed?limit=1000" | jq -c '.items // []'; }
 restarts() { kubectl -n "$NS" get pods -l app.kubernetes.io/name=aggregator -o json | jq '[.items[].status.containerStatuses[]?.restartCount] | add // 0'; }
 bmkg_count() { audit "/internal/audit/checksum?source=BMKG" | jq -r '.count'; }
@@ -57,6 +69,7 @@ for mode in truncated_json deeply_nested invalid_utf8 oversized; do
   mock_admin mock-pvmbg 8082 /admin/malformed "{\"mode\":\"$mode\"}" >/dev/null; sleep 15
   parked | jq -e --arg w "${WANT[$mode]}" 'any(.[]; .reason | startswith($w))' >/dev/null \
     && pass "$mode: kept whole and parked as ${WANT[$mode]}" || fail "$mode: no parked message with reason ${WANT[$mode]}"
+  raw_preserved "${WANT[$mode]}" && pass "$mode: the parked copy is byte-identical to what the sensor sent (message id = hash of the original bytes)" || fail "$mode: the parked copy does not match the bytes the source sent"
 done
 mock_admin mock-pvmbg 8082 /admin/malformed '{"mode":"none"}' >/dev/null
 r1=$(restarts); [ "$r1" = "$r0" ] && pass "aggregator restart count unchanged ($r1)" || fail "aggregator restarted $((r1 - r0)) time(s)"
@@ -67,6 +80,16 @@ echo ">>> 4. replay: fewer parked, no duplicates"
 before=$(parked | jq '[.[] | select(.status=="parked")] | length')
 rules=$(curl -s -m 8 -X POST "$API_URL/unprocessed/schema-rules" -H "Authorization: Bearer $(ops)" -H 'content-type: application/json' -d '{"enablePvmbgV2Compat":true}')
 echo "schema rules: $rules" | cut -c1-200
+rules_on_every_pod() { # rules_on_every_pod <true|false>
+  local p v; for p in $(kubectl -n "$NS" get pods -l app.kubernetes.io/name=aggregator -o jsonpath='{.items[*].metadata.name}'); do
+    v=$(kubectl -n "$NS" exec "$p" -c aggregator -- wget -qO- -T 3 http://127.0.0.1:3000/internal/ops/schema-rules 2>/dev/null | jq -r '.enablePvmbgV2Compat' 2>/dev/null || echo unreachable)
+    [ "$v" = "$1" ] || { echo "$p reports $v" >&2; return 1; }
+  done
+}
+wait_for 15 rules_on_every_pod true && pass "the schema rule saved through one pod is in force on EVERY aggregator pod" || fail "the schema rule did not reach every aggregator pod (state is per pod)"
+victim=$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=aggregator -o jsonpath='{.items[0].metadata.name}')
+kubectl -n "$NS" delete pod "$victim" --wait=false >/dev/null
+wait_for 240 all_ready aggregator && wait_for 30 rules_on_every_pod true && pass "the schema rule survived the restart of a pod (it is stored, not in memory)" || fail "the schema rule was lost when a pod restarted"
 replay=$(curl -s -m 20 -X POST "$API_URL/unprocessed/replay" -H "Authorization: Bearer $(ops)" -H 'content-type: application/json' -d '{"source":"PVMBG"}')
 echo "replay: $replay"
 sleep 10
@@ -74,6 +97,9 @@ after=$(parked | jq '[.[] | select(.status=="parked")] | length')
 rec=$(jq -r '.recovered // 0' <<<"$replay" 2>/dev/null || echo 0); still=$(jq -r '.still_failed // 0' <<<"$replay" 2>/dev/null || echo 0)
 [ "$rec" -gt 0 ] && pass "replay recovered $rec message(s); $still stay parked because they cannot be read without a code change" || fail "replay recovered nothing (response: $replay)"
 [ "$after" -lt "$before" ] && pass "parked messages went from $before to $after" || fail "parked messages did not decrease ($before -> $after)"
+replay2=$(curl -s -m 20 -X POST "$API_URL/unprocessed/replay" -H "Authorization: Bearer $(ops)" -H 'content-type: application/json' -d '{"source":"PVMBG"}')
+rec2=$(jq -r '.recovered // 0' <<<"$replay2" 2>/dev/null || echo 0)
+[ "$rec2" = 0 ] && pass "a second replay recovers nothing more: everything the new rules can recover was recovered by the first" || fail "a second replay still recovered $rec2 message(s): the first replay left recoverable messages behind"
 cursor=""; : > "$tmp/all"
 while :; do body=$(audit "/internal/audit/events?limit=1000${cursor:+&cursor=$cursor}"); jq -r '.items[] | "\(.source)|\(.source_ref_id)"' <<<"$body" >> "$tmp/all"; cursor=$(jq -r '.next_cursor // empty' <<<"$body"); [ -z "$cursor" ] && break; done
 dups=$(LC_ALL=C sort "$tmp/all" | uniq -d | wc -l | tr -d ' ')

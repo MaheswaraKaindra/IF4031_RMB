@@ -77,7 +77,7 @@ while :; do body=$(audit "/internal/audit/events?limit=1000${cursor:+&cursor=$cu
 dups=$(LC_ALL=C sort "$tmp/all" | uniq -d | wc -l | tr -d ' ')
 [ "$dups" = 0 ] && pass "no duplicate HazardEvent after the failover" || fail "$dups duplicate HazardEvent(s)"
 LC_ALL=C sort -u "$tmp/all" > "$tmp/after"
-lost=$(LC_ALL=C comm -23 "$tmp/before" "$tmp/after" | wc -l | tr -d ' ')
+lost=$(lost_ids "$tmp/before" "$tmp/after" | wc -l | tr -d ' ')
 [ "$lost" = 0 ] && pass "no record stored before the loss went missing" || fail "$lost record(s) missing after the failover"
 if [ -z "${SKIP_mock_bmkg:-}" ]; then
   kubectl -n "$NS" port-forward svc/mock-bmkg 18081:8081 >/dev/null 2>&1 & pf=$!; sleep 3

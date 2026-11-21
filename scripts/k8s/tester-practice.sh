@@ -49,7 +49,7 @@ for col in 2:"Audit API" 3:"client-api /events" 4:"auth /token"; do c=${col%%:*}
   echo "     $name: no node answered in $bad of $tot probes (1 per second)"
 done
 collect_ids "$tmp/after" || fail "could not list the records after the run"
-lost=$(LC_ALL=C comm -23 "$tmp/before" "$tmp/after" | wc -l | tr -d ' ')
+lost=$(lost_ids "$tmp/before" "$tmp/after" | wc -l | tr -d ' ')
 [ "$lost" = 0 ] && pass "no record lost ($(wc -l < "$tmp/before" | tr -d ' ') before, $(wc -l < "$tmp/after" | tr -d ' ') after)" || fail "$lost record(s) lost"
 cursor=""; : > "$tmp/all"; while :; do body=$(audit "/internal/audit/events?limit=1000${cursor:+&cursor=$cursor}") || break; jq -r '.items[] | "\(.source)|\(.source_ref_id)"' <<<"$body" >> "$tmp/all"; cursor=$(jq -r '.next_cursor // empty' <<<"$body"); [ -z "$cursor" ] && break; done
 dups=$(LC_ALL=C sort "$tmp/all" | uniq -d | wc -l | tr -d ' '); [ "$dups" = 0 ] && pass "no duplicate HazardEvent" || fail "$dups duplicate(s)"

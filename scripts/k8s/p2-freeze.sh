@@ -7,7 +7,7 @@ set -euo pipefail
 source "$(dirname "$0")/assert-lib.sh"
 FREEZE=${FREEZE_S:-28}; LEASE=${LEASE:-aggregator-poller-bmkg}
 tmp=$(mktemp -d); VICTIM=""; PAUSED=0
-restore() { [ "$PAUSED" = 1 ] && { echo ">>> resuming $VICTIM"; vm_do resume "$VICTIM" || true; node_ready_wait "$VICTIM" 120 || true; }; cleanup_pf; rm -rf "$tmp"; }
+restore() { stop_leader_sampler; [ "$PAUSED" = 1 ] && { echo ">>> resuming $VICTIM"; vm_do resume "$VICTIM" || true; node_ready_wait "$VICTIM" 120 || true; }; cleanup_pf; rm -rf "$tmp"; }
 trap restore EXIT
 
 old=$(lease_holder "$LEASE"); VICTIM=$(pod_node "$old"); SOURCE=${LEASE##*-}; SOURCE=${SOURCE^^}
@@ -15,6 +15,7 @@ echo "leader of $LEASE: $old on $VICTIM"
 use_survivor "$VICTIM"
 trans0=$(lease_transitions "$LEASE")
 collect_ids "$tmp/before"
+start_leader_sampler "$SOURCE" "$tmp/leaders"
 echo ">>> freezing $VICTIM for ${FREEZE}s"
 vm_do pause "$VICTIM"; PAUSED=1; T_FREEZE=$(date -u +%FT%TZ); sleep "$FREEZE"
 new=""; for i in $(seq 1 20); do h=$(lease_holder "$LEASE"); [ "$h" != "$old" ] && [ -n "$h" ] && { new=$h; break; }; sleep 1; done
@@ -26,6 +27,8 @@ lost=""; for i in $(seq 1 30); do
   case "$st" in "false "*|"unreachable") lost=$i; break;; esac; sleep 1; done
 [ -n "$lost" ] && pass "the woken instance stopped acting as leader after ~${lost}s ($st)" || fail "the woken instance still claims to be the leader after 30 s"
 sleep 30
+stop_leader_sampler
+assert_single_leader "$tmp/leaders" 10 "freeze and wake of $old"
 # what did the woken instance manage to do after waking up?
 polls=$(kubectl -n "$NS" logs "deploy/mock-${SOURCE,,}" --since-time="$T_WAKE" 2>/dev/null | jq -r 'select(.msg=="upstream poll served") | .caller_pod' | grep -c "^$old$" || true)
 rej=$(kubectl -n "$NS" logs "$old" -c aggregator --since-time="$T_WAKE" 2>/dev/null | grep -ciE 'stale_epoch|stale epoch|fenced|revoked' || true)
@@ -36,7 +39,7 @@ while :; do body=$(audit "/internal/audit/events?limit=1000${cursor:+&cursor=$cu
   jq -r '.items[] | "\(.source)|\(.source_ref_id)"' <<<"$body" >> "$tmp/all"; cursor=$(jq -r '.next_cursor // empty' <<<"$body"); [ -z "$cursor" ] && break; done
 dups=$(LC_ALL=C sort "$tmp/all" | uniq -d | wc -l | tr -d ' ')
 [ "$dups" = 0 ] && pass "no duplicate HazardEvent after the freeze" || fail "$dups duplicate HazardEvent(s)"
-LC_ALL=C sort -u "$tmp/all" > "$tmp/after"; miss=$(LC_ALL=C comm -23 "$tmp/before" "$tmp/after" | wc -l | tr -d ' ')
-[ "$miss" = 0 ] && pass "no record lost" || fail "$miss record(s) lost"
+LC_ALL=C sort -u "$tmp/all" > "$tmp/after"; miss=$(lost_ids "$tmp/before" "$tmp/after" | wc -l | tr -d ' ')
+[ "$miss" = 0 ] && pass "no record lost ($(satelit_gone "$tmp/before" "$tmp/after") derived wildfire record(s) were retracted by the feed meanwhile, which is normal and checked by satellite-tool reference)" || { fail "$miss record(s) lost"; lost_ids "$tmp/before" "$tmp/after" | head -5 >&2; }
 echo "leadership changes: $(( $(lease_transitions "$LEASE") - trans0 ))"
 finish
