@@ -31,6 +31,7 @@ import { fencedIngest, MongoSourceFenceStore } from './coordination/fencing.js';
 import { MongoCheckpointStore } from './coordination/checkpoints.js';
 import { SourceLeaderManager, type LeaderLeaseHandle } from './coordination/leaderLoop.js';
 import { parseBoundedRawJson } from './p3/boundedJson.js';
+import { noteBookkeepingFailure } from './storage/health.js';
 import { sinceWithOverlap } from './p3/pollCursor.js';
 import {
     validateAndMapBmkgRecord,
@@ -958,6 +959,7 @@ app.post('/internal/deliveries/ack', express.json({ limit: '4kb' }), async (req,
         if (ack.first && ack.latencyMs !== null) metrics.observe('coastal_critical_delivery_seconds', {}, ack.latencyMs / 1000);
         res.json({ first: ack.first, latency_ms: ack.latencyMs });
     } catch (error) {
+        noteBookkeepingFailure(error); // a write-concern timeout here means the store is degraded: later acknowledgements must not wait for w:2 again
         getLog(res).warn({ error: errorMessage(error) }, 'delivery ack failed');
         res.status(503).json({ error: 'ledger unavailable' });
     }

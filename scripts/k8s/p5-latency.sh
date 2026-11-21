@@ -50,7 +50,11 @@ export PANTAI_AUTH_TOKEN; PANTAI_AUTH_TOKEN=$(envfile PANTAI_AUTH_TOKEN)
 export MONGO_URI="mongodb://aggregator:$(envfile MONGO_APP_PASSWORD)@127.0.0.1:27018/?authSource=admin"
 export FAKE_SENSOR_URL=http://127.0.0.1:18084
 kubectl -n "$NS" port-forward svc/sensor-fake 18084:8080 >/dev/null 2>&1 & PFS+=($!)
-kubectl -n "$NS" port-forward svc/mongos 27018:27017 >/dev/null 2>&1 & PF_MONGO=$!; PFS+=($PF_MONGO)
+mongos_pf() { # forward to ONE mongos pod that is not on the node about to be lost (a Service forward may bind a pod on the victim)
+  local pod; pod=$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=mongos -o json | jq -r --arg v "$lnode" '[.items[] | select(.spec.nodeName != $v) | select(any(.status.conditions[]?; .type=="Ready" and .status=="True")) | .metadata.name][0]')
+  kubectl -n "$NS" port-forward "pod/$pod" 27018:27017 >/dev/null 2>&1 & PF_MONGO=$!; PFS+=($PF_MONGO)
+}
+mongos_pf
 for _ in $(seq 1 30); do curl -s -m 1 -o /dev/null "$FAKE_SENSOR_URL/health" && break; sleep 1; done
 TOOL=(node --import tsx "$ROOT/aggregator/src/tools/coastal-tool.ts")
 
@@ -73,6 +77,9 @@ FAILED_AT=$(date -u +%FT%TZ)
 echo ">>> waiting for the last alerts to be delivered (up to ${COMPLETE_MAX_S:-240} s)"
 sleep 20
 cd "$ROOT/aggregator"
+# the forward must be bound to a mongos that survived (re-bound here, after the failure)
+kill "$PF_MONGO" 2>/dev/null || true
+mongos_pf; sleep 4
 T_END=$SECONDS
 while :; do
   "${TOOL[@]}" latency --emitted "$tmp/emitted.json" --deadline "$DEADLINE" > "$tmp/latency.json" 2>/dev/null || true
@@ -87,7 +94,7 @@ if [ "$(jq '.not_in_ledger + .not_delivered' "$tmp/latency.json")" != 0 ]; then
   echo ">>> coastal log lines (condensed) from the surviving aggregator pods since the failure:"
   for p in $(kubectl -n "$NS" get pods -l app.kubernetes.io/name=aggregator -o jsonpath='{.items[*].metadata.name}'); do
     echo "== $p ($(pod_node "$p" || echo unknown))"
-    { kubectl -n "$NS" logs "$p" -c aggregator --since-time="$T_FAIL" 2>/dev/null | grep -E 'SENSOR_PANTAI|coastal|sensor|acquired|lease' | python3 -c "
+    { kubectl -n "$NS" logs "$p" -c aggregator --since-time="$T_FAIL" 2>/dev/null | grep -E 'SENSOR_PANTAI|coastal|sensor|acquired|lease|delivery ack' | python3 -c "
 import sys,json
 seen={}
 for l in sys.stdin:
