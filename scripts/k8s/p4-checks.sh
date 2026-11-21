@@ -58,7 +58,8 @@ new=""; for i in $(seq 1 $((TAKEOVER_MAX * 2))); do h=$(leader_pod 2>/dev/null |
     [ -n "$e" ] && [ -n "$c" ] && [ "$e" -gt "${epoch0:-0}" ] && { new=$h; break; }; fi; sleep 0.5; done
 T1=$(date +%s)
 [ -n "$new" ] && pass "$SCENARIO: $new leads again under a higher epoch and is processing after $((T1 - T0)) s (limit ${TAKEOVER_MAX} s)$([ "$new" = "$L" ] && echo " [the same pod, after its container restarted]")" || { fail "$SCENARIO: no new leader processing within ${TAKEOVER_MAX} s"; finish; }
-wait_for "$CATCHUP_MAX" caught_up "$new" 200 && pass "caught up with the feed again within ${CATCHUP_MAX} s of the failure" || fail "not caught up ${CATCHUP_MAX} s after the failure"
+# The outage is a burst of its own: the feed runs at 60x, so everything it sent while nobody processed is a backlog (criterion 4: up to date within 60 s after the surge ends = after the new leader started).
+wait_for "$CATCHUP_MAX" caught_up "$new" 200 && pass "caught up with the feed again $(( $(date +%s) - T0 )) s after the failure, $(( $(date +%s) - T1 )) s after the new leader started processing (limit ${CATCHUP_MAX} s)" || fail "not caught up ${CATCHUP_MAX} s after the failure"
 c1=$(metric "$new" satellite_committed_offset); [ "$c1" -ge "$c0" ] && pass "committed offset moved forward only ($c0 -> $c1): processing resumed from the checkpoint, nothing re-applied below it" || fail "committed offset went backwards ($c0 -> $c1)"
 epoch1=$(metric "$new" 'aggregator_leader_epoch{source="SATELIT"}'); [ -n "$epoch1" ] && [ "$epoch1" -gt "${epoch0:-0}" ] && pass "the fencing epoch increased ($epoch0 -> $epoch1)" || fail "the fencing epoch did not increase ($epoch0 -> $epoch1)"
 
@@ -70,9 +71,9 @@ read -r count min max < <(cd "$ROOT/aggregator" && node --input-type=module -e "
 import {MongoClient} from 'mongodb';
 const c = new MongoClient(process.env.MONGO_URI); await c.connect();
 const k = c.db('bnpb_canonical_store').collection('satellite_feed_log');
-const count = await k.countDocuments({});
-const min = (await k.find({}, {projection:{_id:1}}).sort({_id:1}).limit(1).next())._id;
 const max = (await k.find({}, {projection:{_id:1}}).sort({_id:-1}).limit(1).next())._id;
+const min = (await k.find({}, {projection:{_id:1}}).sort({_id:1}).limit(1).next())._id;
+const count = await k.countDocuments({_id: {\$lte: max}}); // fixed upper bound: the feed keeps writing while we count
 console.log(count, min, max); await c.close();")
 echo "     frames stored: $count, lowest offset $min, highest $max"
 [ "$min" = 0 ] && [ "$count" = $(( max + 1 )) ] && pass "the feed log is contiguous: $count frames for offsets 0..$max, so none lost and none stored twice" || fail "the feed log has a gap or a duplicate ($count frames for offsets $min..$max)"

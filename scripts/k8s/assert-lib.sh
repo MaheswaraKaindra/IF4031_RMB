@@ -102,3 +102,9 @@ assert_single_leader() {
     sort -u "$file" | awk '{c[$1]++; l[$1]=l[$1] "\n    " $0} END{for(k in c) if(c[k]>1) printf "%s", l[k]; print ""}' >&2
   fi
 }
+# crash_pod_process <pod> <node>: SIGKILL the Node process of ONE pod from its node (a crash: no SIGTERM handler, no lease release, no cleanup).
+# kill -9 from inside the container does nothing (PID 1 of a PID namespace ignores it), and pkill -f would also hit the other Node services on
+# the node, so the process is matched by the pod's HOSTNAME in its environment. The container is then restarted by the kubelet.
+crash_pod_process() {
+  node_ssh "$2" "for pid in \$(pgrep -f 'node dist/index.js'); do sudo tr '\\0' '\\n' < /proc/\$pid/environ 2>/dev/null | grep -qx 'HOSTNAME=$1' && sudo kill -9 \$pid && echo killed \$pid; done"
+}
