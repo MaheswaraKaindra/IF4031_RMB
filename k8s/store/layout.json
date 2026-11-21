@@ -1,0 +1,98 @@
+{
+  "database": "bnpb_canonical_store",
+  "slots": 3,
+  "config": {
+    "name": "cfg",
+    "members": [
+      {
+        "name": "mongo-cfg-1",
+        "slot": 1,
+        "arbiter": false,
+        "priority": 1
+      },
+      {
+        "name": "mongo-cfg-2",
+        "slot": 2,
+        "arbiter": false,
+        "priority": 1
+      },
+      {
+        "name": "mongo-cfg-3",
+        "slot": 3,
+        "arbiter": false,
+        "priority": 1
+      }
+    ]
+  },
+  "shards": [
+    {
+      "name": "shard-1",
+      "members": [
+        {
+          "name": "mongo-s1-a",
+          "slot": 1,
+          "arbiter": false,
+          "priority": 2
+        },
+        {
+          "name": "mongo-s1-b",
+          "slot": 2,
+          "arbiter": false,
+          "priority": 1
+        },
+        {
+          "name": "mongo-s1-arb",
+          "slot": 3,
+          "arbiter": true,
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "name": "shard-2",
+      "members": [
+        {
+          "name": "mongo-s2-a",
+          "slot": 2,
+          "arbiter": false,
+          "priority": 2
+        },
+        {
+          "name": "mongo-s2-b",
+          "slot": 3,
+          "arbiter": false,
+          "priority": 1
+        },
+        {
+          "name": "mongo-s2-arb",
+          "slot": 1,
+          "arbiter": true,
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "name": "shard-3",
+      "members": [
+        {
+          "name": "mongo-s3-a",
+          "slot": 3,
+          "arbiter": false,
+          "priority": 2
+        },
+        {
+          "name": "mongo-s3-b",
+          "slot": 1,
+          "arbiter": false,
+          "priority": 1
+        },
+        {
+          "name": "mongo-s3-arb",
+          "slot": 2,
+          "arbiter": true,
+          "priority": 0
+        }
+      ]
+    }
+  ]
+}

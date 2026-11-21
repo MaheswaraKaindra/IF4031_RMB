@@ -1,0 +1,49 @@
+# Secret mock-pvmbg-secret (PVMBG_TOKEN_SHA256) is created by scripts/k8s/create-secrets.sh.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-pvmbg
+  labels: {app.kubernetes.io/name: mock-pvmbg, role: mock}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: mock-pvmbg}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: mock-pvmbg, role: mock}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+    spec:
+      containers:
+        - name: mock-pvmbg
+          image: bnpb/mock-pvmbg
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8082}]
+          envFrom:
+            - configMapRef: {name: mock-pvmbg-config}
+            - secretRef: {name: mock-pvmbg-secret}
+          resources:
+            requests: {memory: 64Mi}
+            limits: {memory: 128Mi}
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1000}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-pvmbg
+  labels: {app.kubernetes.io/name: mock-pvmbg, role: mock}
+spec:
+  selector: {app.kubernetes.io/name: mock-pvmbg}
+  ports: [{name: http, port: 8082, targetPort: http}]

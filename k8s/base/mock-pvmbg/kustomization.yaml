@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - workload.yaml
+configMapGenerator:
+  - name: mock-pvmbg-config
+    literals:
+      - PVMBG_PORT=8082
+      - PVMBG_DELAY_MIN_MS=500
+      - PVMBG_DELAY_MAX_MS=3000
+      - PVMBG_REPORT_INTERVAL_MS=10000
+      - LOG_LEVEL=info

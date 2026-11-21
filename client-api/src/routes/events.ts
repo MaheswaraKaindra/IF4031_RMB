@@ -30,7 +30,11 @@ eventsRouter.get('/', async (req, res) => {
     }
     const fields = requestedFields ?? defaultFields(scope);
 
-    const ctx: RequestContext = { correlationId: getCorrelationId(res), log: getLog(res) };
+    const ctx: RequestContext = {
+        correlationId: getCorrelationId(res),
+        traceparent: typeof res.locals.traceparent === 'string' ? res.locals.traceparent : undefined,
+        log: getLog(res),
+    };
 
     const [eventsResult, statusResult] = await Promise.allSettled([
         fetchEvents({ hazard_type, severity, limit }, ctx),
@@ -47,5 +51,8 @@ eventsRouter.get('/', async (req, res) => {
 
     const sources = statusResult.status === 'fulfilled' ? buildSources(statusResult.value) : null;
 
-    res.json({ events: eventsResult.value.map((event) => project(event, fields)), sources });
+    const { events, partial, unavailable_units } = eventsResult.value;
+    const body = { events: events.map((event) => project(event, fields)), sources };
+    // M1 response shape is unchanged for complete answers; incomplete ones are flagged explicitly.
+    res.json(partial ? { ...body, partial: true, unavailable_units } : body);
 });

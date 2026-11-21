@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - workload.yaml
+configMapGenerator:
+  - name: auth-service-config
+    literals:
+      - AUTH_PORT=8090
+      - JWT_ISSUER=bnpb-auth
+      - JWT_AUDIENCE=bnpb-client-api
+      - ACCESS_TOKEN_TTL_SECONDS=60
+      - REFRESH_TOKEN_TTL_SECONDS=3600
+      - AUTH_MAX_FAILED_ATTEMPTS=10
+      - AUTH_FAILURE_WINDOW_SECONDS=60
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - LOG_LEVEL=info

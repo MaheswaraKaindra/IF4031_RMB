@@ -1,0 +1,135 @@
+# Final demo layout: 3 separate-kernel nodes (VMs), sharded store, sensor, observability.
+# Apply with scripts/deploy.sh demo (substitutes REGISTRY_PLACEHOLDER with $REGISTRY and creates the prerequisites).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# store/sensor/observability manifests carry no namespace: pin everything here (the spec fixes the name).
+namespace: sistem-informasi-kebencanaan-bnpb
+resources:
+  - ../../base
+  - ../../store
+  - ../../sensor
+  - ../../observability
+  - entrypoints.yaml
+  - hpa.yaml
+
+configMapGenerator:
+  - name: aggregator-config
+    behavior: merge
+    literals:
+      - STORE_MODE=sharded
+      - STORE_WRITE_W=2
+      - STORE_WRITE_TIMEOUT_MS=1500
+      - STORE_DEADLINE_MS=1000   # client-api gives up after 2s: leave room for the router hop + serialisation
+      - STORE_STRICT_WRITES=0    # 1 = fail closed on a write-concern timeout (see docs/consistency.md)
+
+patches:
+  # Node loss: by default Kubernetes waits 300s before moving pods off an unreachable node, i.e. minutes of outage for any
+  # single-copy service on it. Stateless pods leave after 20s instead.
+  # Store StatefulSets are NOT included: their volume is node-local, a replacement needs p1-replace-node.sh.
+  - target: {kind: Deployment}
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: any
+      spec:
+        template:
+          spec:
+            tolerations:
+              - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+              - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+  # The public read path survives a node loss without waiting for a reschedule: 2 client-api replicas on different nodes
+  # (stateless: JWT verification with the public key; the in-flight limit applies per replica).
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: client-api
+      spec:
+        replicas: 2
+        template:
+          spec:
+            topologySpreadConstraints:
+              - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeTaintsPolicy: Honor,
+                 labelSelector: {matchLabels: {app.kubernetes.io/name: client-api}}}
+  # auth-service: 2 replicas on different nodes so token issuance survives a node loss. Both Services use ClientIP
+  # affinity (refresh tokens are per replica); a client whose replica dies re-authenticates with /token, as after a restart.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: auth-service
+      spec:
+        replicas: 2
+        template:
+          spec:
+            topologySpreadConstraints:
+              - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeTaintsPolicy: Honor,
+                 labelSelector: {matchLabels: {app.kubernetes.io/name: auth-service}}}
+  # Two query routers are only redundant on two different nodes.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mongos
+      spec:
+        template:
+          spec:
+            topologySpreadConstraints:
+              - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeTaintsPolicy: Honor,
+                 labelSelector: {matchLabels: {app.kubernetes.io/name: mongos}}}
+  # The temporary single-node Mongo is replaced by k8s/store.
+  - patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: mongo
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: mongo
+  # Aggregator waits for the router instead of the deleted mongo Service, and reads the placement map.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: aggregator
+      spec:
+        template:
+          spec:
+            initContainers:
+              # Waits until the aggregator's OWN credentials work through mongos. The store-init Job creates that user
+              # (after sharding the collection), so this also means "cluster bootstrap finished".
+              # NOT on RabbitMQ: the aggregator buffers and reconnects by itself, and the single broker pod is not
+              # recreated while its node is unreachable (StatefulSet), which would keep the whole read path down.
+              - name: wait-for-deps
+                image: docker.io/library/mongo:7
+                env:
+                  - {name: HOME, value: /tmp}
+                  - name: MONGO_URI
+                    valueFrom: {secretKeyRef: {name: aggregator-secret, key: MONGO_URI}}
+                command:
+                  - bash
+                  - -c
+                  - |
+                    until mongosh "$MONGO_URI" --quiet --eval 'quit(db.hello().ok ? 0 : 1)' >/dev/null 2>&1; do
+                      echo "waiting for store bootstrap"; sleep 3
+                    done
+            containers:
+              - name: aggregator
+                volumeMounts:
+                  - {name: store-topology, mountPath: /etc/store, readOnly: true}
+            volumes:
+              - name: store-topology
+                configMap: {name: store-topology}
+
+images:
+  - {name: bnpb/aggregator, newName: REGISTRY_PLACEHOLDER/bnpb/aggregator, newTag: demo}
+  - {name: bnpb/client-api, newName: REGISTRY_PLACEHOLDER/bnpb/client-api, newTag: demo}
+  - {name: bnpb/auth-service, newName: REGISTRY_PLACEHOLDER/bnpb/auth-service, newTag: demo}
+  - {name: bnpb/consumers, newName: REGISTRY_PLACEHOLDER/bnpb/consumers, newTag: demo}
+  - {name: bnpb/mock-bmkg, newName: REGISTRY_PLACEHOLDER/bnpb/mock-bmkg, newTag: demo}
+  - {name: bnpb/mock-pvmbg, newName: REGISTRY_PLACEHOLDER/bnpb/mock-pvmbg, newTag: demo}

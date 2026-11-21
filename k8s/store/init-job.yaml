@@ -1,0 +1,35 @@
+# Idempotent cluster bootstrap: replica sets, addShard, hashed-_id sharding, users, default write concern.
+# Jobs are immutable: scripts/deploy.sh deletes the previous Job before applying.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: store-init
+  labels: {app.kubernetes.io/name: store-init, role: other, bnpb.io/store: "true"}
+spec:
+  backoffLimit: 12
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: store-init, role: other, bnpb.io/store: "true"}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: docker.io/library/mongo:7
+          command: ["mongosh", "--nodb", "--quiet", "--file", "/scripts/init.js"]
+          env:
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: MONGO_APP_PASSWORD
+              valueFrom: {secretKeyRef: {name: store-users, key: MONGO_APP_PASSWORD}}
+            - name: STORE_PROBE_PASSWORD
+              valueFrom: {secretKeyRef: {name: store-users, key: STORE_PROBE_PASSWORD}}
+          envFrom:
+            - secretRef: {name: mongo-secret}
+          resources:
+            requests: {memory: 128Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: script, mountPath: /scripts}
+      volumes:
+        - name: script
+          configMap: {name: store-init-script}

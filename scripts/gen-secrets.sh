@@ -22,6 +22,11 @@ field_team_secret=$(b64url 32)
 bnpb_ops_secret=$(b64url 32)
 mongo_password=$(openssl rand -hex 24)
 rabbitmq_password=$(openssl rand -hex 24)
+mongo_app_password=$(openssl rand -hex 24)
+store_probe_password=$(openssl rand -hex 24)
+mongo_keyfile=$(openssl rand -hex 48)
+audit_token=$(b64url 32)
+pantai_token=$(b64url 32)
 
 cat <<EOF
 X_BMKG_KEY=$bmkg_key
@@ -38,4 +43,9 @@ AUTH_CLIENT_BNPB_OPS_SECRET=$bnpb_ops_secret
 AUTH_CLIENT_BNPB_OPS_SECRET_SHA256=$(sha256 "$bnpb_ops_secret")
 MONGO_PASSWORD=$mongo_password
 RABBITMQ_PASSWORD=$rabbitmq_password
+MONGO_APP_PASSWORD=$mongo_app_password
+STORE_PROBE_PASSWORD=$store_probe_password
+MONGO_KEYFILE=$mongo_keyfile
+AUDIT_TOKEN=$audit_token
+PANTAI_AUTH_TOKEN=$pantai_token
 EOF

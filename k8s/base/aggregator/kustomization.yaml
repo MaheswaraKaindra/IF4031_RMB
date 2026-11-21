@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - workload.yaml
+configMapGenerator:
+  - name: aggregator-config
+    literals:
+      - AGGREGATOR_PORT=3000
+      - STORAGE_API_PORT=3001
+      - BMKG_URL=http://mock-bmkg:8081
+      - PVMBG_URL=http://mock-pvmbg:8082
+      - POLLING_INTERVAL_MS=3000
+      - COORDINATION_MODE=k8s
+      - LEASE_DURATION_SEC=20
+      - LEASE_RENEW_DEADLINE_SEC=12
+      - LEASE_RETRY_PERIOD_SEC=3
+      - MAX_PAYLOAD_BYTES=262144
+      - MAX_JSON_DEPTH=32
+      - INBOX_MAX_ATTEMPTS=5
+      - REPLAY_MAX_PER_SEC=50
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - LOG_LEVEL=info

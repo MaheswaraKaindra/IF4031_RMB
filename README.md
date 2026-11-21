@@ -255,6 +255,100 @@ npm run dev                 # consumers: npm run dev:notifier atau npm run dev:d
 
 Daftar variabel tiap service ada di `.env.example` masing-masing. MongoDB dan RabbitMQ harus tersedia di `localhost`.
 
+## Kubernetes (M2, dalam pengerjaan)
+
+Manifest ada di `k8s/` (Kustomize: `k8s/base` + `k8s/overlays/<nama>`). Docker Compose di atas tetap dipakai untuk smoke test dan regresi M1.
+
+| Komponen | `role` | Memori request/limit (Lampiran B) |
+|---|---|---|
+| aggregator | aggregator | 256Mi / 512Mi |
+| mongo (sementara, bukan desain P1) | store | 512Mi / 1Gi |
+| rabbitmq | broker | 512Mi / 1Gi |
+| consumer-notifier, -dashboard, -portal | consumer | 128Mi / 256Mi |
+| client-api, auth-service | api | 128Mi / 256Mi |
+| mock-bmkg, mock-pvmbg | mock | 64Mi / 128Mi |
+
+### Dev di laptop (kind, hanya smoke test)
+
+kind memakai kernel bersama, sehingga **tidak sah untuk demo M2**. Syarat: Docker berjalan, `kubectl`, `kind`, `jq`, dan `.env` (lihat "Cara menjalankan").
+
+```bash
+./scripts/deploy.sh dev            # buat cluster kind, build + load image, secret, apply, tunggu rollout
+./scripts/k8s/verify-resources.sh  # semua pod punya label role dan memori sesuai Lampiran B
+./scripts/k8s/smoke.sh             # token -> GET /events lewat client-api
+kind delete cluster --name bnpb-dev
+```
+
+Pemeriksaan statis tanpa cluster: `./scripts/k8s/verify-resources.sh --manifests k8s/overlays/dev` (butuh `python3` + PyYAML).
+
+### Demo multi-node (3 VM k3s)
+
+Topologi final: 3 node dengan kernel terpisah (lihat `docs/topology.md` untuk anggaran RAM dan template deklarasi topologi, `docs/deployment.md` untuk diagram deployment). Storage P1 = MongoDB sharded
+(3 shard x [2 data + 1 arbiter] dirotasi di 3 node, 3 config server, 2 mongos); alasan dan trade-off di `docs/decisions/ADR-0001-storage.md`
+(status: **diusulkan**, bukti gate PoC masih menunggu cluster).
+
+```bash
+# 1. Cluster k3s (control-plane + 2 worker), lalu label 3 "store slot" ke 3 node BERBEDA
+scripts/k8s/label-nodes.sh node-a node-b node-c
+# 2. Build + push image multi-arch, lalu deploy satu perintah
+PUSH=1 REGISTRY=<registry> TAG=demo scripts/k8s/build-images.sh
+REGISTRY=<registry> INSTALL_TESTER=1 scripts/deploy.sh demo
+#    tanpa registry: impor image langsung ke k3s di tiap VM lewat SSH (butuh sudo tanpa password untuk `k3s ctr`)
+#    scripts/k8s/import-images.sh user@vm1 user@vm2 user@vm3 && REGISTRY=local.import INSTALL_TESTER=1 scripts/deploy.sh demo
+# 3. Verifikasi
+scripts/k8s/verify-resources.sh && scripts/k8s/verify-isolation.sh && scripts/k8s/smoke.sh
+```
+
+Titik masuk: NodePort 30080 (client-api), 30090 (auth), 30000 (aggregator port 3001 saja: Audit API dan `/analytics`; API internal M1 di :3000 tidak pernah dipublikasikan). Grafana/Jaeger lewat `kubectl port-forward` (`docs/observability.md`).
+Tester Agent: `scripts/k8s/install-tester-agent.sh` (manifest dan digest sesuai spesifikasi, tidak dimodifikasi).
+
+### Pengujian P1 (hanya di cluster 3 node)
+
+| Kriteria | Perintah |
+|---|---|
+| 1 sebaran data per node | `scripts/k8s/p1-load.sh 50000` |
+| 2 skew dan lonjakan satu wilayah | `scripts/k8s/p1-hotspot.sh 20000 sumatra` |
+| 3 query global, urutan, pagination | `scripts/k8s/p1-query.sh` |
+| 4 node + disk hilang: tidak ada HazardEvent hilang, jawaban tidak pernah 5xx/menggantung | `scripts/k8s/p1-node-loss.sh 1` (simulasi, PVC dihapus dan diverifikasi baru) atau `NODE_IP=<ip node lain> scripts/k8s/p1-node-loss.sh 1 --manual` (matikan VM / Tester Agent; probe lewat NodePort node yang selamat, daftar ID sebelum kehilangan disimpan) |
+| 4 jawaban partial eksplisit + 7 banner dashboard | `scripts/k8s/p1-unit-loss.sh 1` (satu shard utuh tidak terjangkau), lalu buka `/analytics` |
+| 5 node kosong bergabung | otomatis (resync); hasil terlihat di akhir `p1-node-loss.sh`. Mesin pengganti yang BERBEDA: `IDS_BEFORE=<file dari p1-node-loss> scripts/k8s/p1-replace-node.sh <slot> <node-baru> --delete-old-node` |
+| 6 tahan kehilangan berikutnya | `scripts/k8s/p1-node-loss.sh 2` setelah yang pertama selesai |
+| 7 dashboard analitik | buka `http://<node>:30000/analytics`, masukkan token audit, tombol "Cocokkan dengan Audit API" |
+| bukti lokasi/sebaran | `scripts/k8s/p1-report.sh` |
+
+Batas yang diketahui saat satu node MATI (diukur pada rehearsal kind, `docker stop` node): pod stateless pindah setelah ~70 s
+(toleransi 20 s di overlay demo, bukan 300 s bawaan); client-api, auth-service dan mongos masing-masing 2 replika di node
+berbeda (auth-service memakai `sessionAffinity: ClientIP` karena refresh token disimpan per replika: klien yang replikanya mati
+cukup meminta `/token` lagi, sama seperti setelah restart; afinitas berlaku per node, jadi klien memakai satu alamat node).
+Aggregator masih 1 replika (menunggu leader election P2, Owner B), jadi bila node yang mati memuatnya, permintaan gagal cepat
+(tanpa menggantung) selama ~80 s, lalu semua jawaban kembali lengkap.
+Tidak ada data yang hilang. RabbitMQ (1 pod, StatefulSet) tidak dibuat ulang selama node-nya mati (HA broker = P3).
+
+Tanpa cluster: `cd aggregator && npm test` (14 tes: urutan lintas unit, cursor, partial, fencing, format checksum, kontrak Audit API terhadap referensi in-memory).
+Adapter MongoDB terhadap server asli (dibandingkan dengan referensi in-memory; database sementara, dihapus setelahnya):
+`docker run -d --rm -p 27018:27017 --name bnpb-mongo-test mongo:7` lalu `MONGO_TEST_URI=mongodb://localhost:27018 npm run test:mongo`
+(sharded: port-forward `svc/mongos` dengan user admin dan tambahkan `MONGO_TEST_SHARDED=1`).
+`scripts/k8s/verify-resources.sh --manifests k8s/overlays/demo`. Jaminan konsistensi per endpoint: `docs/consistency.md`. Kontrak storage untuk Owner B/C: `docs/storage-contract.md`.
+
+### Variabel konfigurasi tambahan (M2)
+
+| Variabel | Default | Keterangan |
+|---|---|---|
+| `STORE_MODE` | `single` | `sharded` dipilih otomatis oleh `deploy.sh demo`; mengubah kunci dokumen (`_id` = `hazard_id`), write concern, dan indeks |
+| `STORE_WRITE_W` | `2` (sharded) | write concern; `1` menukar durabilitas dengan ketersediaan tulis saat satu anggota shard hilang |
+| `STORE_WRITE_TIMEOUT_MS` / `STORE_DEADLINE_MS` / `STORE_SCAN_DEADLINE_MS` | `1500` / `1000` / `8000` | batas tulis, batas baca per unit, dan batas satu pemindaian penuh (analitik/checksum; lewat batas → `partial`) |
+| `AUDIT_TOKEN` | dihasilkan `gen-secrets.sh` | Bearer untuk `/internal/audit/*` dan `/internal/analytics/*`; ganti dengan token dari asisten |
+| `MONGO_APP_PASSWORD`, `STORE_PROBE_PASSWORD`, `MONGO_KEYFILE` | dihasilkan | kredensial user aplikasi, user probe per-anggota, keyfile antar-anggota |
+| `PANTAI_AUTH_TOKEN` | dihasilkan | token Sensor Pantai |
+
+### Batasan saat ini
+
+- Dikerjakan tanpa cluster hidup: manifest ter-render dan lolos pemeriksaan memori/role, logika storage lolos tes unit, tetapi **bootstrap shard, NetworkPolicy, failover, dan semua skrip `p1-*` belum pernah dijalankan** di Kubernetes. Anggap belum terbukti sampai bukti terisi di ADR-0001.
+- `hazard_id` kini deterministik (hash `source` + `source_ref_id`) dan kunci shard: perlu disepakati dengan Owner B (P2, dedup).
+- Aggregator dan auth-service tetap 1 replika sampai leader election (P2) dan state auth bersama tersedia. Audit API `unprocessed` mengembalikan daftar kosong sampai inbox P3 tersedia.
+- Service belum mengekspos `/metrics` dan span OTLP; infrastruktur observability siap tetapi panel kosong sampai itu ditambahkan (`docs/observability.md`).
+- Skrip `scripts/p2..p4` dan `script-ps-*` hanya untuk Docker Compose.
+
 ## Asumsi dan batasan yang disadari
 
 - Bila satu event BMKG memiliki beberapa `TsunamiWarning`, warning terkuat yang dipakai (Awas mengalahkan Siaga dan Waspada, sesama kuat dipilih yang terbit paling akhir). Warning yang lebih lemah dan datang belakangan tidak menurunkan severity.
