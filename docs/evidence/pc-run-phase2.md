@@ -215,3 +215,18 @@ Change: client-api now repeats that POST once (3 s limit, `FIELD_REPORT_RETRY_TI
 - **Writes:** 488 sent, 488 answered 202 (p50 0.03 s, p95 0.06 s, max 1.05 s, three answers over 1 s). All 488 are in the store, none twice.
 - **Reads (same run, from `p1-node-loss.sh`):** 57 complete Audit API or analytics answers, 0 partial, 19 client API reads, 0 slower than 2 s, 0 bad. Records before 150,176, after 150,617, lost 0; redundancy was restored.
 - Single run, slot 3.
+
+## P5 priority under a Media flood, with the field report retry, 2026-11-22 (P5 criterion 5)
+
+`load-test/p5-priority.js`, 40 s, 100 Media read VUs, 10 Tim Lapangan read VUs, 3 field-report VUs, through the NodePorts of node-a, six aggregator and four client-api pods (HPA).
+
+| Run | Media 429 | Media served | Field-team 429 | Field-team served | Field-team read p95 | Reports accepted / refused |
+|---|---:|---:|---:|---:|---:|---|
+| `MEDIA_MAX_IN_FLIGHT=30` (the deployed value) | 1,578 | 3,116 | 0 | 329 | 1.99 s | 88 / 0 |
+| `MEDIA_MAX_IN_FLIGHT=8` (tried, then reverted) | 23,184 | 1,824 | 0 | 381 | 1.94 s | 56 / 5 |
+
+- In both runs Tim Lapangan was never rejected and Media was rejected with controlled HTTP 429s: this is what criterion 5 asks for.
+- The k6 threshold of 1 s for the field-team read p95 (our own target, not in the spec) was not met in either run, and k6 exited 99.
+- A lower Media ceiling did not help: with 568 rejections per second client-api itself used 350-680 m CPU per pod, and the aggregators sat at 170-320 m CPU, so the limit is the VMs' CPU, not the admission rule. The ceiling was put back to 30.
+- The field report retry works (eight reports were answered by their second attempt in the logs). In the second run five of 61 reports timed out twice (3 s each) and were refused with 503 because the aggregator did not answer, so a saturated cluster can still refuse a field report.
+- Not done: priority handling inside the aggregator (reads and report writes share its event loop).
