@@ -1,4 +1,4 @@
-# IF4031_M1_RMB
+# IF4031 RMB: sistem informasi kebencanaan BNPB (M1 + M2)
 
 Milestone 1 IF4031 Arsitektur Aplikasi Terdistribusi.
 
@@ -255,7 +255,7 @@ npm run dev                 # consumers: npm run dev:notifier atau npm run dev:d
 
 Daftar variabel tiap service ada di `.env.example` masing-masing. MongoDB dan RabbitMQ harus tersedia di `localhost`.
 
-## Kubernetes (M2, dalam pengerjaan)
+## Kubernetes (M2)
 
 Manifest ada di `k8s/` (Kustomize: `k8s/base` + `k8s/overlays/<nama>`). Docker Compose di atas tetap dipakai untuk smoke test dan regresi M1.
 
