@@ -161,3 +161,19 @@ The failing report `k6-45-4-1795272290863` correlated with a client-api call to 
 - **Run 4 (after, 15 s curl limit): 358 of 360 OK.** All 90 client API probes and every `events` probe succeeded. The only two failures were `analytics` (15 s, at −2.3 s, before the power-off) and `checksum` (15 s, at +13.7 s).
 - **Limits found, not fixed.** (1) `analytics/summary` and `audit/checksum` are full scans: 2.4 to 6.6 s on these VMs for about 146,000 records (the `store scan` log lines), bounded by design at 8 s, and with three of them running at once a few exceeded the 15 s probe limit even with no failure. (2) Requests entering through a NodePort can still reach a pod on a dead node until Kubernetes marks the node NotReady (about 16 s with the tuned grace period); run 3 showed this for auth-service. The sample is small (two runs after the change), so this shows the failures shrank, not that they are gone.
 - **Environment.** node-c (run 1) and node-a (during the rollout) froze with no log lines and were reset with `controlvm reset`; each was counted as a test-environment problem.
+
+## Trace through every hop, 2026-11-21 (Observability criterion 2)
+
+New child spans: `store ingest` / `store accept field report` (the store write) and `broker publish` / `broker publish field report` (the broker hop), with the publish span's `traceparent` passed to the consumers. One `POST /field-reports` with correlation ID `trace-1795279060` through the NodePort of node-a produced this trace in Jaeger (trace `6282bdd95acfb0ffd0a042284ee3ab65`, start offset and duration in ms):
+
+| Start | Duration | Service | Span | Parent |
+|---|---|---|---|---|
+| 0 | 175 | client-api | `POST /field-reports/` | none |
+| 50 | 105 | aggregator | `POST /internal/field-reports` | client-api request |
+| 96 | 52 | aggregator | `store accept field report` | aggregator request |
+| 308 | 35 | aggregator | `broker publish field report` | aggregator request |
+| 326 / 336 / 337 | 1 | consumer-notifier, consumer-dashboard, consumer-portal | `consume q_field_notifier` / `q_dashboard_updater` / `q_regional_portal` | broker publish |
+| 354 | 85 | consumer-notifier | `consume q_critical_alerts_v2` | broker publish |
+| 373 | 60 | aggregator | `POST /internal/deliveries/ack` | broker publish |
+
+The poll-driven critical alert path was not re-traced in this run. Its `store ingest` span is a child of the `poll`/`coastal critical ingest` span in the same way (covered by the unit tests only; a Jaeger capture of a coastal alert is not verified).

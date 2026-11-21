@@ -5,6 +5,7 @@ import type { HazardEvent } from '../utils/mapper.js';
 import { computeBackoffWithJitter } from './rawInbox.js';
 import { mapFieldReportToHazard, validateFieldReport } from './schemaValidator.js';
 import { bookkeepingOptions } from '../storage/health.js';
+import { startChildSpan } from '../observability.js';
 
 export type OutboxStatus = 'pending' | 'published';
 
@@ -99,7 +100,14 @@ export class MongoFieldReportOutbox implements FieldReportStore {
         };
 
         try {
-            await this.coll().insertOne(record);
+            const storeSpan = startChildSpan('store accept field report', input.traceparent, 'CLIENT', { hazard_id: hazardEvent.hazard_id, 'x-correlation-id': input.correlationId });
+            try {
+                await this.coll().insertOne(record);
+                storeSpan.end(true);
+            } catch (e) {
+                storeSpan.end(!isDupKey(e), { duplicate: isDupKey(e) ? 1 : 0 });
+                throw e;
+            }
             return { status: 202, report_id: record.report_id, hazard_id: hazardEvent.hazard_id, duplicate: false };
         } catch (err) {
             if (isDupKey(err)) {

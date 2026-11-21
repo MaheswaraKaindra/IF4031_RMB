@@ -294,6 +294,27 @@ export function emitSpan(input: {
     }
 }
 
+/** A span for one hop (store write, broker publish, ...) that is a child of `parentTraceparent`; its own traceparent is what the next hop should receive. */
+export function startChildSpan(
+    name: string,
+    parentTraceparent: string | undefined,
+    kind: 'INTERNAL' | 'SERVER' | 'CLIENT' | 'PRODUCER' | 'CONSUMER',
+    attributes: Record<string, string | number | undefined> = {}
+): { traceparent: string | undefined; end: (ok: boolean, extra?: Record<string, string | number | undefined>) => void } {
+    if (!parentTraceparent) return { traceparent: undefined, end: () => undefined };
+    const ctx = newSpanContext(parentTraceparent);
+    const startMs = Date.now();
+    let ended = false;
+    return {
+        traceparent: ctx.traceparent,
+        end: (ok, extra = {}) => {
+            if (ended) return;
+            ended = true;
+            emitSpan({ traceId: ctx.traceId, spanId: ctx.spanId, parentSpanId: ctx.parentSpanId, name, kind, startMs, endMs: Date.now(), ok, attributes: { ...attributes, ...extra } });
+        },
+    };
+}
+
 export function metricsAndTracingMiddleware(serviceName: string): RequestHandler {
     return (req: Request, res: Response, next: NextFunction): void => {
         if (req.path === '/metrics') {

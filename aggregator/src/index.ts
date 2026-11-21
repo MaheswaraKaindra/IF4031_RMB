@@ -25,7 +25,7 @@ import {
 import { HAZARD_TYPES, SOURCES, type HazardType, type Severity, type Source } from './storage/types.js';
 import { InvalidCursorError } from './storage/types.js';
 import { CORRELATION_HEADER, errorMessage, getLog, logger, requestLogger, timed } from './logger.js';
-import { emitSpan, metrics, metricsAndTracingMiddleware, metricsEndpoint, newSpanContext } from './observability.js';
+import { emitSpan, metrics, metricsAndTracingMiddleware, metricsEndpoint, newSpanContext, startChildSpan } from './observability.js';
 import { KubernetesLeaseProvider, MongoLeaseProvider, type ILeaseProvider } from './coordination/lease.js';
 import { fencedIngest, MongoSourceFenceStore } from './coordination/fencing.js';
 import { MongoCheckpointStore } from './coordination/checkpoints.js';
@@ -137,7 +137,9 @@ function sendToBroker(item: PendingPublish, log: Logger): void {
         bufferEvent(item, log);
         return;
     }
-    const { event, correlationId, traceparent } = item;
+    const { event, correlationId } = item;
+    const pubSpan = startChildSpan('broker publish', item.traceparent, 'PRODUCER', { source: event.source, hazard_id: event.hazard_id, 'x-correlation-id': correlationId });
+    const traceparent = pubSpan.traceparent ?? item.traceparent;
     try {
         channel.publish(
             EXCHANGE,
@@ -151,11 +153,13 @@ function sendToBroker(item: PendingPublish, log: Logger): void {
                 persistent: true,
             },
             (error) => {
+                pubSpan.end(!error);
                 if (error) bufferEvent(item, log);
                 else log.info({ hazard_id: event.hazard_id, source: event.source, severity: event.severity }, 'Published HazardEvent');
             }
         );
     } catch {
+        pubSpan.end(false);
         bufferEvent(item, log);
     }
 }
@@ -185,20 +189,28 @@ function publishConfirmedToBroker(
 
 async function publishFieldReportOutboxRecord(record: FieldReportOutboxRecord): Promise<void> {
     const payload = Buffer.from(JSON.stringify(record.hazard_event));
+    const pubSpan = startChildSpan('broker publish field report', record.traceparent, 'PRODUCER', { hazard_id: record.hazard_event.hazard_id, attempt: record.attempts, 'x-correlation-id': record.correlation_id });
+    const traceparent = pubSpan.traceparent ?? record.traceparent;
     const props: amqp.Options.Publish = {
         contentType: 'application/json',
         messageId: `${record.hazard_event.hazard_id}:${record.hazard_event.severity}`,
         correlationId: record.correlation_id,
         headers: {
-            ...(record.traceparent ? { traceparent: record.traceparent } : {}),
+            ...(traceparent ? { traceparent } : {}),
             idempotency_key: record.idempotency_key,
         },
         persistent: true,
     };
-    await Promise.all([
-        publishConfirmedToBroker(EXCHANGE, '', payload, props),
-        publishConfirmedToBroker(CRITICAL_EXCHANGE, 'critical.field_report', payload, props),
-    ]);
+    try {
+        await Promise.all([
+            publishConfirmedToBroker(EXCHANGE, '', payload, props),
+            publishConfirmedToBroker(CRITICAL_EXCHANGE, 'critical.field_report', payload, props),
+        ]);
+        pubSpan.end(true);
+    } catch (err) {
+        pubSpan.end(false);
+        throw err;
+    }
 }
 
 function flushPendingPublish(): void {
@@ -342,12 +354,14 @@ async function ingestFencedRecord(
         return 'transient_queued';
     }
 
+    const storeSpan = startChildSpan('store ingest', traceparent, 'CLIENT', { source: event.source, hazard_id: event.hazard_id, 'x-correlation-id': correlationId });
     const res = await fencedIngest(
         repo,
         fenceStore,
         { event, eventVersion, epoch: handle.epoch },
         handle.isStillValid
     );
+    storeSpan.end(res.outcome !== 'unavailable', { outcome: res.outcome, created: res.created ? 1 : 0 });
 
     if (res.outcome === 'stale_epoch') {
         log.warn({ hazard_id: res.hazard_id, leader_epoch: handle.epoch }, 'stale leader epoch rejected during commit');
