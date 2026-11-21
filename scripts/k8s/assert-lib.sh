@@ -64,3 +64,42 @@ node_ready_wait() { # node_ready_wait <node> <seconds>
 lease_holder() { kubectl -n "$NS" get lease "$1" -o jsonpath='{.spec.holderIdentity}' 2>/dev/null; }
 lease_transitions() { kubectl -n "$NS" get lease "$1" -o jsonpath='{.spec.leaseTransitions}' 2>/dev/null; }
 pod_node() { kubectl -n "$NS" get pod "$1" -o jsonpath='{.spec.nodeName}' 2>/dev/null; }
+
+# ---- leader sampling (P2.4/P2.5) ---------------------------------------------------------------------------------------
+# start_leader_sampler <SOURCE> <file>: every 2 s, ask EVERY aggregator pod in parallel whether it is a valid leader of the
+# source; one line "<epoch-second> <pod>" per pod that says so. Both pods asked in the same round share the timestamp, so two
+# lines with the same timestamp mean two simultaneous valid leaders. Stop with stop_leader_sampler.
+LEADER_SAMPLER_PID=""
+start_leader_sampler() {
+  local source=$1 file=$2
+  : > "$file"
+  (
+    while :; do
+      ts=$(date +%s); pids=()
+      for p in $(kubectl -n "$NS" get pods -l app.kubernetes.io/name=aggregator -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        ( v=$(kubectl -n "$NS" exec "$p" -c aggregator -- wget -qO- -T 2 http://127.0.0.1:3000/health 2>/dev/null | jq -r --arg s "$source" '.leadership[$s] | select(.isLeader==true and .valid==true) | "1"' 2>/dev/null || true)
+          [ "$v" = 1 ] && echo "$ts $p" >> "$file" ) &
+        pids+=($!)
+      done
+      wait "${pids[@]}" 2>/dev/null || true
+      sleep 2
+    done
+  ) >/dev/null 2>&1 &
+  LEADER_SAMPLER_PID=$!
+}
+stop_leader_sampler() { [ -n "$LEADER_SAMPLER_PID" ] && { kill "$LEADER_SAMPLER_PID" 2>/dev/null; pkill -P "$LEADER_SAMPLER_PID" 2>/dev/null || true; }; LEADER_SAMPLER_PID=""; }
+# assert_single_leader <file> <min-samples> <what>: PASS only if enough rounds saw a valid leader AND no round saw two
+assert_single_leader() {
+  local file=$1 min=$2 what=$3 rounds two
+  rounds=$(awk '{print $1}' "$file" | sort -u | wc -l | tr -d ' ')
+  two=$(awk '{c[$1]++} END{n=0; for(k in c) if(c[k]>1) n++; print n}' "$file")
+  [ "$rounds" -ge "$min" ] && pass "$what: $rounds sampling rounds saw a valid leader (at least $min needed)" || fail "$what: only $rounds sampling rounds saw a valid leader (at least $min needed): the check had too little data"
+  [ "$two" = 0 ] && pass "$what: never two valid leaders in the same round" || fail "$what: $two round(s) with two valid leaders at the same time"
+}
+
+# crash_pod_process <pod> <node>: SIGKILL the Node process of ONE pod from its node (a crash: no SIGTERM handler, no lease release, no cleanup).
+# kill -9 from inside the container does nothing (PID 1 of a PID namespace ignores it), and pkill -f would also hit the other Node services on
+# the node, so the process is matched by the pod's HOSTNAME in its environment. The container is then restarted by the kubelet.
+crash_pod_process() {
+  node_ssh "$2" "for pid in \$(pgrep -f 'node dist/index.js'); do sudo tr '\\0' '\\n' < /proc/\$pid/environ 2>/dev/null | grep -qx 'HOSTNAME=$1' && sudo kill -9 \$pid && echo killed \$pid; done"
+}
