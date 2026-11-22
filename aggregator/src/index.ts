@@ -337,7 +337,7 @@ async function ingestFencedRecord(
     log: Logger,
     correlationId: string,
     traceparent: string
-): Promise<'ok' | 'stale_epoch' | 'transient_queued'> {
+): Promise<'ok' | 'stale_epoch' | 'transient_queued' | 'held'> {
     // Per-key ordering: if an earlier record for this source_ref_id failed/is parked, hold this one too
     if (await rawInbox.hasBlockingFailure(event.source, event.source_ref_id)) {
         await rawInbox.appendFailure({
@@ -351,7 +351,10 @@ async function ingestFencedRecord(
             next_attempt_at: new Date(Date.now() + 2000).toISOString(),
         });
         metrics.inc('aggregator_inbox_messages_total', { source: event.source, status: 'retrying' });
-        return 'transient_queued';
+        // Held behind an earlier unprocessed version of the same key (the per-key order). The record is safely in the inbox, so the poll IS committed: returning
+        // 'transient_queued' here kept the source's cursor from advancing, and every poll then re-fetched and re-queued the whole stuck window (a wedge that grew
+        // the inbox by hundreds of messages a minute as soon as one key stayed parked).
+        return 'held';
     }
 
     const storeSpan = startChildSpan('store ingest', traceparent, 'CLIENT', { source: event.source, hazard_id: event.hazard_id, 'x-correlation-id': correlationId });
