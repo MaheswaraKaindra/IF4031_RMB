@@ -4,7 +4,7 @@
 #   scripts/m2/proof.sh 1.2             one item
 #   scripts/m2/proof.sh p1              a whole group in order (p1 p2 p3 p4 p5 g), asking before each item
 # For every item the script: checks the cluster is healthy (for items that disturb it), runs the test through proof-run.sh (output shown live and saved to
-# docs/m2/proofs/<id>/), then asks you to take the screenshot (Win+PrintScreen) and imports it with shot.sh. Items that need a browser tell you what to open.
+# docs/m2-details/proofs/<id>/), then asks you to take the screenshot (Win+PrintScreen) and imports it with shot.sh. Items that need a browser tell you what to open.
 # Nothing is committed or pushed. A failed run still keeps its text file: read it, then run the item again if it was a harness problem.
 set -uo pipefail
 SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0"); ROOT=$(cd "$(dirname "$0")/../.." && pwd); cd "$ROOT"

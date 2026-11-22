@@ -179,7 +179,7 @@ Pada API publik \texttt{client-api}, tersedia \texttt{POST} \path{/field-reports
 
 \subsection{Observabilitas dan Audit API}
 
-Ketiga pilar observabilitas dipasang pada \textit{namespace} \texttt{sistem-\allowbreak informasi-\allowbreak kebencanaan-\allowbreak bnpb} (\path{docs/m2/observability.md}):
+Ketiga pilar observabilitas dipasang pada \textit{namespace} \texttt{sistem-\allowbreak informasi-\allowbreak kebencanaan-\allowbreak bnpb} (\path{docs/m2-details/observability.md}):
 
 \begin{enumerate}
   \item \textbf{Metrik terpadu (Prometheus dan Grafana):} Prometheus menyapu otomatis seluruh 21 target \textit{pod} aktif (meliputi layanan inti, \textit{mock}, pengekspor RabbitMQ pada port \texttt{15692}, tiga pengekspor MongoDB per \textit{shard}, serta \textit{cAdvisor}). Data disajikan ke dalam empat dasbor Grafana yang sudah terpasang otomatis: ringkasan BNPB, koordinasi dan \textit{store}, aliran satelit Problem 4, serta ketahanan pantai Problem 5.

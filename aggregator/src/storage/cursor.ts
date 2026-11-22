@@ -1,7 +1,7 @@
 import { InvalidCursorError, type SortOrder } from './types.js';
 
 // Keyset cursor: the sort key of the last returned item, never an offset.
-// Cursors are NOT snapshots: updates/retracts between pages can move records. Documented in docs/m2/consistency.md.
+// Cursors are NOT snapshots: updates/retracts between pages can move records. Documented in docs/m2-details/consistency.md.
 export interface CursorKey {
     s: SortOrder;
     k: string; // occurred_at or ingested_at of the last item

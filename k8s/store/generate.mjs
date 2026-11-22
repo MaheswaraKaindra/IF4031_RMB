@@ -6,7 +6,7 @@
 //   shard-i : data member "a" on slot i, data member "b" on slot i%3+1, arbiter on slot (i+1)%3+1
 //   cfg     : one config server per slot
 // Every node therefore holds data for exactly 2 of the 3 shards (~2/3 of the dataset, never all of it), and
-// losing any one node leaves at least one data copy of every shard. See docs/m2/decisions/ADR-0001-storage.md.
+// losing any one node leaves at least one data copy of every shard. See docs/m2-details/decisions/ADR-0001-storage.md.
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

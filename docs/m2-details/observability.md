@@ -22,7 +22,7 @@ exists, how to reach it and what is not covered.
 
 ## Traces (OpenTelemetry)
 OTLP/HTTP to `http://jaeger:4318`; `traceparent` is propagated and `x-correlation-id` is a span attribute and in every log line, so one request can be followed
-client-api -> aggregator -> consumers. The store write (`store ingest`, `store accept field report`) and the broker publish (`broker publish`, `broker publish field report`) are spans of their own, so one request shows every hop with its timing (example in `docs/m2/evidence/pc-run-phase2.md`). **Not covered:** the mocks, MongoDB itself, RabbitMQ itself and the sensor image emit no spans (third-party or too thin to instrument); inside MongoDB and the broker the time is only visible as the duration of the span that calls them.
+client-api -> aggregator -> consumers. The store write (`store ingest`, `store accept field report`) and the broker publish (`broker publish`, `broker publish field report`) are spans of their own, so one request shows every hop with its timing (example in `docs/m2-details/evidence/pc-run-phase2.md`). **Not covered:** the mocks, MongoDB itself, RabbitMQ itself and the sensor image emit no spans (third-party or too thin to instrument); inside MongoDB and the broker the time is only visible as the duration of the span that calls them.
 
 ## Logs
 Pino JSON with `correlation_id`, plus `trace_id`, `service`, `pod`, `node`, `duration_ms`, `error_code`.

@@ -112,7 +112,7 @@ Setelah autentikasi JWT menentukan kelas klien (\texttt{field-team}, \texttt{bnp
 Dengan rumus partisi ini, gabungan \texttt{ops + media} maksimal hanya memakai $60$ slot dan \texttt{media} dibatasi maksimal $30$ slot. Sebanyak $40$ slot eksklusif selalu tersisa untuk \texttt{field-team}, sedangkan kelebihan beban langsung ditolak cepat dengan HTTP \texttt{429 Retry-After: 1}.
 
 \paragraph*{5. Observabilitas dan Penetapan SLO beserta \textit{Error Budget}}
-Sistem mengekspor metrik Prometheus dari 21 target \textit{pod} ke Grafana (dasbor 12 panel untuk ketahanan pantai), log JSON Pino ber-\texttt{correlation\_id}, serta jejak \textit{tracing} OpenTelemetry ke Jaeger (\path{docs/m2/observability.md}). Dua target keandalan ditetapkan pada \path{docs/m2/slo.md}: \textbf{99\% ketepatan waktu} pengiriman kritis dalam $\le 5\text{ detik}$ (\textit{error budget} $1\%$) serta \textbf{99,5\% admitansi} permintaan Tim Lapangan di \texttt{client-api} (\textit{error budget} $0{,}5\%$).
+Sistem mengekspor metrik Prometheus dari 21 target \textit{pod} ke Grafana (dasbor 12 panel untuk ketahanan pantai), log JSON Pino ber-\texttt{correlation\_id}, serta jejak \textit{tracing} OpenTelemetry ke Jaeger (\path{docs/m2-details/observability.md}). Dua target keandalan ditetapkan pada \path{docs/m2-details/slo.md}: \textbf{99\% ketepatan waktu} pengiriman kritis dalam $\le 5\text{ detik}$ (\textit{error budget} $1\%$) serta \textbf{99,5\% admitansi} permintaan Tim Lapangan di \texttt{client-api} (\textit{error budget} $0{,}5\%$).
 
 \subsubsection{Alasan Keputusan}
 
@@ -161,13 +161,13 @@ Sistem mengekspor metrik Prometheus dari 21 target \textit{pod} ke Grafana (dasb
     \toprule
     \textbf{Batasan} & \textbf{Penjelasan dan Alasan} & \textbf{Referensi Kode} \\
     \midrule
-    \textbf{\textit{Span} OpenTelemetry berhenti pada layanan pihak ketiga} & \textit{Mock}, MongoDB, RabbitMQ, dan \path{sensor-pantai} tidak memancarkan \textit{span} ke Jaeger. Pelacakan lintas \textit{broker} tetap tersambung lewat \texttt{correlation\_id} log dan \textit{field} \texttt{traceparent} di \path{coastal_deliveries}. & \path{docs/m2/observability.md}, \path{aggregator/src/coastal/ledger.ts} \\
+    \textbf{\textit{Span} OpenTelemetry berhenti pada layanan pihak ketiga} & \textit{Mock}, MongoDB, RabbitMQ, dan \path{sensor-pantai} tidak memancarkan \textit{span} ke Jaeger. Pelacakan lintas \textit{broker} tetap tersambung lewat \texttt{correlation\_id} log dan \textit{field} \texttt{traceparent} di \path{coastal_deliveries}. & \path{docs/m2-details/observability.md}, \path{aggregator/src/coastal/ledger.ts} \\
     \midrule
-    \textbf{Pengujian mati \textit{node} pada satu komputer fisik ($30$--$38\text{ s}$)} & Pada pengujian \texttt{node-loss}, mematikan satu VM berarti mematikan sebagian CPU dan memori komputer yang sama, dan k3s memerlukan sekitar $16\text{ detik}$ untuk menandai \textit{node} tak sehat. Akibatnya jeda serah terima \textit{leader} lebih lama ($p_{95} = 34\text{ s}$) daripada pada \textit{node} fisik terpisah. Seluruh 300/300 peringatan tetap sampai (0 hilang); yang terpengaruh hanya ambang 5 detik pada 196 peringatan yang dipancarkan saat serah terima. Pada kegagalan proses \textit{leader} p95 4,4 detik. & \path{aggregator/src/coastal/service.ts}, \path{docs/m2/slo.md}, \path{docs/m2/evidence/pc-run-phase2.md} \\
+    \textbf{Pengujian mati \textit{node} pada satu komputer fisik ($30$--$38\text{ s}$)} & Pada pengujian \texttt{node-loss}, mematikan satu VM berarti mematikan sebagian CPU dan memori komputer yang sama, dan k3s memerlukan sekitar $16\text{ detik}$ untuk menandai \textit{node} tak sehat. Akibatnya jeda serah terima \textit{leader} lebih lama ($p_{95} = 34\text{ s}$) daripada pada \textit{node} fisik terpisah. Seluruh 300/300 peringatan tetap sampai (0 hilang); yang terpengaruh hanya ambang 5 detik pada 196 peringatan yang dipancarkan saat serah terima. Pada kegagalan proses \textit{leader} p95 4,4 detik. & \path{aggregator/src/coastal/service.ts}, \path{docs/m2-details/slo.md}, \path{docs/m2-details/evidence/pc-run-phase2.md} \\
     \midrule
-    \textbf{Kapasitas CPU komputer pengujian saat banjir Media} & \texttt{PriorityAdmission} mencatat 0 penolakan \texttt{429} untuk Tim Lapangan. Karena ketiga VM VirtualBox berbagi CPU satu komputer, banjir Media menaikkan $p_{95}$ baca menjadi $1{,}83$--$1{,}88\text{ s}$ serta memicu sedikit \textit{timeout} \texttt{2.000 ms} pada \path{POST /field-reports} walau laporan tetap tersimpan di \textit{outbox}. & \path{client-api/src/middleware/admission.ts}, \path{docs/m2/deviations.md} \\
+    \textbf{Kapasitas CPU komputer pengujian saat banjir Media} & \texttt{PriorityAdmission} mencatat 0 penolakan \texttt{429} untuk Tim Lapangan. Karena ketiga VM VirtualBox berbagi CPU satu komputer, banjir Media menaikkan $p_{95}$ baca menjadi $1{,}83$--$1{,}88\text{ s}$ serta memicu sedikit \textit{timeout} \texttt{2.000 ms} pada \path{POST /field-reports} walau laporan tetap tersimpan di \textit{outbox}. & \path{client-api/src/middleware/admission.ts}, \path{docs/m2-details/deviations.md} \\
     \midrule
-    \textbf{Uji gabungan \textit{Tester Agent} (\textit{game day}) belum penuh} & Baru skenario \texttt{schema} yang lolos dari enam skenario latihan karena seluruh \textit{node} klaster k3s berperan sebagai \textit{control-plane}. Skenario ujian penuh juga menunggu kunci resmi saat demo. & \path{docs/m2/deviations.md}, \path{docs/m2/evidence/pc-run-phase2.md} \\
+    \textbf{Uji gabungan \textit{Tester Agent} (\textit{game day}) belum penuh} & Baru skenario \texttt{schema} yang lolos dari enam skenario latihan karena seluruh \textit{node} klaster k3s berperan sebagai \textit{control-plane}. Skenario ujian penuh juga menunggu kunci resmi saat demo. & \path{docs/m2-details/deviations.md}, \path{docs/m2-details/evidence/pc-run-phase2.md} \\
     \midrule
     \textbf{Keterbatasan perangkat keras pengujian} & Ketiga VM berbagi CPU satu komputer fisik yang hanya melayani sekitar 45 hingga 50 permintaan per detik untuk beban kerja M1 tanpa jeda berpikir, sehingga bukti memakai skala beban yang disesuaikan dengan kapasitas komputer ini: empat pengguna M1 dan batas Media 4 permintaan bersamaan per \textit{pod} (baku 30). Ini batas \textit{host}, bukan batas rancangan prioritas. & \path{scripts/m2/p5-m1-load.sh}, \path{load-test/p5-priority.js} \\
     \bottomrule
@@ -176,7 +176,7 @@ Sistem mengekspor metrik Prometheus dari 21 target \textit{pod} ke Grafana (dasb
 
 \subsubsection{Bukti Penyelesaian per Kriteria}
 
-Bukti berikut berasal dari eksekusi skrip pada klaster tiga VM (\texttt{node-a}, \texttt{node-c}, \texttt{node-d}). Keluaran teks lengkap tiap eksekusi tersimpan di repositori pada \path{docs/m2/proofs/}. Kegagalan disuntikkan melalui sensor palsu (\texttt{sensor-fake}) yang hanya dipakai saat pengujian; skenario \textit{game day} Tester Agent menunggu bahan pengujian dari asisten.
+Bukti berikut berasal dari eksekusi skrip pada klaster tiga VM (\texttt{node-a}, \texttt{node-c}, \texttt{node-d}). Keluaran teks lengkap tiap eksekusi tersimpan di repositori pada \path{docs/m2-details/proofs/}. Kegagalan disuntikkan melalui sensor palsu (\texttt{sensor-fake}) yang hanya dipakai saat pengujian; skenario \textit{game day} Tester Agent menunggu bahan pengujian dari asisten.
 
 
 \paragraph*{Kriteria 1: 0 \textit{event} kritis hilang, $p_{95} \le 5$ detik.}
@@ -212,7 +212,7 @@ Satu laporan lapangan dilacak melalui seluruh \textit{hop}: \textit{client API},
 \gambarbukti[0.40]{bk-5-7e.png}{Dasbor ketahanan pesisir (\textit{circuit breaker} dan permintaan ke sensor)}{bk-5-7e}
 
 \paragraph*{Kriteria 8: target keandalan dan \textit{error budget}.}
-Target keandalan jalur peringatan Tim Lapangan didefinisikan pada \path{docs/m2/slo.md}. \isian{Tambahkan pemakaian \textit{error budget} selama \textit{game day} setelah skenario ujian dijalankan.}
+Target keandalan jalur peringatan Tim Lapangan didefinisikan pada \path{docs/m2-details/slo.md}. \isian{Tambahkan pemakaian \textit{error budget} selama \textit{game day} setelah skenario ujian dijalankan.}
 
 \subsubsection{Jawaban atas Butir ``Di laporan''}
 

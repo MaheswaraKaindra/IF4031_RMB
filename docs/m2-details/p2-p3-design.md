@@ -1,6 +1,6 @@
 # P2 and P3 design: aggregator coordination and messaging
 
-Written from the implementation (`aggregator/src/coordination`, `aggregator/src/p3`) and the measurements in `docs/m2/evidence/pc-run-phase2.md`.
+Written from the implementation (`aggregator/src/coordination`, `aggregator/src/p3`) and the measurements in `docs/m2-details/evidence/pc-run-phase2.md`.
 It answers the "Di laporan" questions of Problem Sets 2 and 3, and states every trade-off and limit.
 
 ## P2: running several aggregator instances without fetching twice

@@ -1,6 +1,6 @@
 # Topology and RAM budget (D2)
 
-Pod/node/disk placement and traffic paths: `docs/m2/deployment.md`.
+Pod/node/disk placement and traffic paths: `docs/m2-details/deployment.md`.
 
 Demo target: **3 VMs** (separate kernels) on the 32 GB PC. Fill the declaration table in the README before the demo.
 

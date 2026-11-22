@@ -1,7 +1,7 @@
 # Storage PoC (decision D1)
 
 Goal: decide MongoDB-sharded vs CockroachDB with measurements, not preference. The decision record is
-`docs/m2/decisions/ADR-0001-storage.md`; this directory holds the harness.
+`docs/m2-details/decisions/ADR-0001-storage.md`; this directory holds the harness.
 
 | Gate | What | Where it runs | Command |
 |---|---|---|---|
@@ -22,4 +22,4 @@ copies and the full comparison becomes meaningful: re-open ADR-0001 in that case
 
 ## Expected cost of the Mongo layout (to be confirmed by gate 1 and `kubectl top`)
 3 shards x (2 data + 1 arbiter) + 3 config servers = 12 `role=store` pods at 512Mi request each, plus 2 mongos.
-Per node: 4 store pods = 2Gi of requests. See `docs/m2/topology.md` for the full RAM budget.
+Per node: 4 store pods = 2Gi of requests. See `docs/m2-details/topology.md` for the full RAM budget.

@@ -283,8 +283,8 @@ Pemeriksaan statis tanpa cluster: `./scripts/m2/verify-resources.sh --manifests 
 
 ### Demo multi-node (3 VM k3s)
 
-Topologi final: 3 node dengan kernel terpisah (lihat `docs/m2/topology.md` untuk anggaran RAM dan template deklarasi topologi, `docs/m2/deployment.md` untuk diagram deployment). Storage P1 = MongoDB sharded
-(3 shard x [2 data + 1 arbiter] dirotasi di 3 node, 3 config server, 2 mongos); alasan dan trade-off di `docs/m2/decisions/ADR-0001-storage.md`
+Topologi final: 3 node dengan kernel terpisah (lihat `docs/m2-details/topology.md` untuk anggaran RAM dan template deklarasi topologi, `docs/m2-details/deployment.md` untuk diagram deployment). Storage P1 = MongoDB sharded
+(3 shard x [2 data + 1 arbiter] dirotasi di 3 node, 3 config server, 2 mongos); alasan dan trade-off di `docs/m2-details/decisions/ADR-0001-storage.md`
 (status: **diusulkan**; gate PoC sudah diukur pada 3 VM, lihat bagian bukti di ADR-0001).
 
 ```bash
@@ -304,7 +304,7 @@ scripts/m2/verify-resources.sh && scripts/m2/verify-isolation.sh && scripts/m2/s
 
 Catatan: MongoDB 4.4 (lihat "Batasan saat ini"); image pihak ketiga (mongo, rabbitmq, prometheus, grafana, jaeger, exporter) diunduh k3s dari internet pada deploy pertama.
 
-Titik masuk: NodePort 30080 (client-api), 30090 (auth), 30000 (aggregator port 3001 saja: Audit API dan `/analytics`; API internal M1 di :3000 tidak pernah dipublikasikan). Grafana (dasbor "BNPB overview", "BNPB coordination, broker and store", satelit dan pesisir) dan Jaeger lewat `kubectl port-forward` (`docs/m2/observability.md`).
+Titik masuk: NodePort 30080 (client-api), 30090 (auth), 30000 (aggregator port 3001 saja: Audit API dan `/analytics`; API internal M1 di :3000 tidak pernah dipublikasikan). Grafana (dasbor "BNPB overview", "BNPB coordination, broker and store", satelit dan pesisir) dan Jaeger lewat `kubectl port-forward` (`docs/m2-details/observability.md`).
 Tester Agent: `scripts/m2/install-tester-agent.sh` (manifest dan digest sesuai spesifikasi, tidak dimodifikasi).
 
 ### Deklarasi topologi (demo)
@@ -316,7 +316,7 @@ Tester Agent: `scripts/m2/install-tester-agent.sh` (manifest dan digest sesuai s
 | node-d (192.168.56.14) | control-plane + etcd + worker | VM VirtualBox | PC yang sama | sama | 4 vCPU / 7 GB |
 
 Ketiga node berada pada satu host fisik dengan kernel terpisah (bukan kind/k3d). node-b (192.168.56.12) dipakai pada awal pengujian dan
-digantikan oleh node-d pada uji kehilangan node. Pengukuran dan bukti: `docs/m2/evidence/pc-run-phase1.md`.
+digantikan oleh node-d pada uji kehilangan node. Pengukuran dan bukti: `docs/m2-details/evidence/pc-run-phase1.md`.
 Store berjalan di MongoDB **4.4** (bukan 7) karena VM VirtualBox-on-Hyper-V tidak menyediakan instruksi AVX yang dibutuhkan MongoDB 5.0+.
 
 ### Pengujian P1 (hanya di cluster 3 node)
@@ -334,7 +334,7 @@ Store berjalan di MongoDB **4.4** (bukan 7) karena VM VirtualBox-on-Hyper-V tida
 | 7 dashboard analitik | buka `http://<node>:30000/analytics`, masukkan token audit, tombol "Cocokkan dengan Audit API" |
 | bukti lokasi/sebaran | `scripts/m2/p1-report.sh` |
 
-Batas yang diketahui saat satu node MATI (diukur pada 3 VM nyata dengan `VBoxManage controlvm <node> poweroff`, bukti di `docs/m2/evidence/pc-run-phase2.md`):
+Batas yang diketahui saat satu node MATI (diukur pada 3 VM nyata dengan `VBoxManage controlvm <node> poweroff`, bukti di `docs/m2-details/evidence/pc-run-phase2.md`):
 node dinyatakan NotReady setelah ~16 s (`tune-failure-detection.sh`) dan sampai saat itu NodePort masih dapat mengirim sebagian permintaan ke pod di node yang mati
 (auth-service pada satu uji gagal dua kali). Aggregator berjalan dengan >=3 replika dan menjangkau kedua router mongos lewat nama SRV `mongos-direct` (driver
 memeriksa keduanya tiap detik), sehingga router yang mati tidak lagi dipilih. Probe Audit API dan client API per detik selama power-off nyata: 358 dari 360
@@ -345,7 +345,7 @@ Tanpa cluster: `cd aggregator && npm test` (14 tes: urutan lintas unit, cursor, 
 Adapter MongoDB terhadap server asli (dibandingkan dengan referensi in-memory; database sementara, dihapus setelahnya):
 `docker run -d --rm -p 27018:27017 --name bnpb-mongo-test mongo:4.4` lalu `MONGO_TEST_URI=mongodb://localhost:27018 npm run test:mongo`
 (sharded: port-forward `svc/mongos` dengan user admin dan tambahkan `MONGO_TEST_SHARDED=1`).
-`scripts/m2/verify-resources.sh --manifests k8s/overlays/demo`. Jaminan konsistensi per endpoint: `docs/m2/consistency.md`. Kontrak storage untuk Owner B/C: `docs/m2/storage-contract.md`.
+`scripts/m2/verify-resources.sh --manifests k8s/overlays/demo`. Jaminan konsistensi per endpoint: `docs/m2-details/consistency.md`. Kontrak storage untuk Owner B/C: `docs/m2-details/storage-contract.md`.
 
 ### Menjalankan setiap skenario pengujian P2-P5 (cluster 3 VM)
 
@@ -411,15 +411,15 @@ semua VM penuh (~95% CPU, setengahnya waktu kernel/jaringan overlay) dan latensi
 
 ### Batasan saat ini
 
-- Bukti dari 3 VM nyata: `docs/m2/evidence/pc-run-phase1.md` (P1), `docs/m2/evidence/pc-run-phase2.md` (P2-P5 dan integrasi) dan tabel di `docs/m2/decisions/ADR-0001-storage.md`.
+- Bukti dari 3 VM nyata: `docs/m2-details/evidence/pc-run-phase1.md` (P1), `docs/m2-details/evidence/pc-run-phase2.md` (P2-P5 dan integrasi) dan tabel di `docs/m2-details/decisions/ADR-0001-storage.md`.
 - Store berjalan di MongoDB **4.4**, bukan 7: VM VirtualBox-on-Hyper-V tidak menyediakan instruksi AVX. Operator agregasi 5.0+ tidak boleh dipakai (kode pesisir memakai `$add` dengan `$$NOW`, bukan `$dateAdd`).
-- Pipeline satelit (P4) aktif saat `SATELLITE_GROUP_TOKEN` diisi. Pengujian umpan asli, SIGKILL leader, dan kehilangan node tercatat di [bukti fase 2](docs/m2/evidence/pc-run-phase2.md).
+- Pipeline satelit (P4) aktif saat `SATELLITE_GROUP_TOKEN` diisi. Pengujian umpan asli, SIGKILL leader, dan kehilangan node tercatat di [bukti fase 2](docs/m2-details/evidence/pc-run-phase2.md).
 - Tester Agent: skenario `schema` lulus. Skenario yang menyasar pod/node (`kill-leader`, `kill-store`, `wipe-node`, `clock-skew`, `partition`) tidak menemukan sasaran karena ketiga node adalah server k3s (control-plane) dan agen hanya menyasar node worker kecuali diizinkan; perlu keputusan topologi (node B/C sebagai agent) atau cara mengizinkan.
 - Kapasitas jalur baca sekitar 100-150 req/s pada 3 VM satu PC (lihat di atas); 10.000 pengguna dicapai dengan `vu-sim.mjs` pada sekitar 71 req/s, dan rasio throughput 3 melawan 1 instans (5,28 kali) hanya terukur dengan batas CPU 250m per pod (`p2-throughput-capped.sh`).
-- Observability: metrik dan jejak ada untuk aggregator, client-api, auth, consumer, serta metrik RabbitMQ dan MongoDB per shard; penulisan ke store dan publish ke broker kini berupa span sendiri (satu permintaan terlihat di semua hop, lihat `docs/m2/observability.md`); mock, MongoDB, RabbitMQ, dan image sensor sendiri tidak menghasilkan span.
+- Observability: metrik dan jejak ada untuk aggregator, client-api, auth, consumer, serta metrik RabbitMQ dan MongoDB per shard; penulisan ke store dan publish ke broker kini berupa span sendiri (satu permintaan terlihat di semua hop, lihat `docs/m2-details/observability.md`); mock, MongoDB, RabbitMQ, dan image sensor sendiri tidak menghasilkan span.
 - Skrip di `scripts/m1/` (`p2-*`, `p3-*`, `p4-*`, `script-ps-*`) hanya untuk Docker Compose; skrip Kubernetes ada di `scripts/m2/`.
 
-Lihat [deviasi Milestone 2](docs/m2/deviations.md) dan [SLO layanan pesisir](docs/m2/slo.md).
+Lihat [deviasi Milestone 2](docs/m2-details/deviations.md) dan [SLO layanan pesisir](docs/m2-details/slo.md).
 
 ## Asumsi dan batasan yang disadari
 

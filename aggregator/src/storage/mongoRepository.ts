@@ -120,7 +120,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
             if (err instanceof MongoWriteConcernError && !this.o.strictWrites) {
                 // wtimeout: the primary applied the write, only the second data member has not confirmed (it is down or
                 // re-syncing). Refusing writes for the whole recovery window would stop ingestion; acknowledge it as
-                // DEGRADED instead: durable on ONE copy until resync (see docs/m2/consistency.md). Callers count/log `degraded`.
+                // DEGRADED instead: durable on ONE copy until resync (see docs/m2-details/consistency.md). Callers count/log `degraded`.
                 return { outcome: 'applied', hazard_id: id, created: true, degraded: true, detail: errMsg(err) };
             }
             // Network / server-selection error, or strict mode: the write may or may not have happened.

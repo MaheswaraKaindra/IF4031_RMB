@@ -1,6 +1,6 @@
 \subsection{Bukti Pendukung Platform dan Observabilitas}
 
-Bukti berikut mendukung ketentuan platform (sumber daya, isolasi, rahasia, observabilitas) dan kontrak Audit API. Keluaran teks lengkap tersimpan di \path{docs/m2/proofs/}.
+Bukti berikut mendukung ketentuan platform (sumber daya, isolasi, rahasia, observabilitas) dan kontrak Audit API. Keluaran teks lengkap tersimpan di \path{docs/m2-details/proofs/}.
 
 \paragraph*{Sumber daya, isolasi, dan uji asap.}
 \path{verify-resources.sh} memastikan setiap \textit{pod} mendeklarasikan \textit{requests} dan \textit{limits} sesuai kelas komponen pada Lampiran B. \path{verify-isolation.sh} memastikan hanya \texttt{aggregator} yang dapat menjangkau anggota penyimpanan, sedangkan \texttt{client-api}, \texttt{auth-service}, \textit{consumer}, dan \textit{mock} ditolak. \path{smoke.sh} menunjukkan \path{/events} mengembalikan data dan seluruh sumber tidak basi. Total 164 pemeriksaan lulus dengan kode keluar 0.

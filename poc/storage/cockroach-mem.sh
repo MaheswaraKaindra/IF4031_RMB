@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PoC gate 1 for CockroachDB: one node under the same 1Gi limit. This is a TIME-BOXED smoke test: on 3 nodes
-# CockroachDB is eliminated by topology (docs/m2/decisions/ADR-0001-storage.md), so this only documents memory behaviour
+# CockroachDB is eliminated by topology (docs/m2-details/decisions/ADR-0001-storage.md), so this only documents memory behaviour
 # for the decision record and for the case where the demo grows to >= 4 nodes.
 # Usage: poc/storage/cockroach-mem.sh [rows=300000]
 set -euo pipefail

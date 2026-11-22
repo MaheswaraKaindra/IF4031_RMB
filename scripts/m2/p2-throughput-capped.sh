@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # P2 criterion 7 under an ARTIFICIAL CPU limit: successful throughput with 1 vs 3 aggregator instances, each pod capped at CPU_CAP (default 250m).
-# Without the cap the three VMs share one PC's CPU, the aggregator is not the bottleneck and the ratio is about 0.9x (see docs/m2/evidence/pc-run-phase2.md).
+# Without the cap the three VMs share one PC's CPU, the aggregator is not the bottleneck and the ratio is about 0.9x (see docs/m2-details/evidence/pc-run-phase2.md).
 # With the cap a single instance is compute-bound, so the aggregator tier itself is measured. The cap and the failure rates MUST be stated next to the result.
 #   [VUS=40 PHASE_S=45 CPU_CAP=250m]  scripts/m2/p2-throughput-capped.sh
 # The aggregator HPA is removed and the cap is set for the test; both are restored on exit. Needs k6 on PATH.

@@ -165,20 +165,20 @@ Pada sisi observabilitas data, \texttt{createStorageRouter} (\path{aggregator/sr
     \toprule
     \textbf{Batasan} & \textbf{Penjelasan dan Alasan} & \textbf{Referensi Kode} \\
     \midrule
-    \textbf{Masa \textit{degraded write} bersalinan tunggal} & Saat satu \textit{node} mati dan belum diganti, tulisan baru pada \textit{shard} terdampak hanya tersimpan di satu \textit{primary} (\texttt{degraded: true}). Jika \textit{node} kedua ikut mati sebelum sinkronisasi tuntas, tulisan selama jeda tersebut berisiko hilang. & \path{docs/m2/consistency.md:8}, \path{aggregator/src/storage/mongoRepository.ts:104-109} \\
+    \textbf{Masa \textit{degraded write} bersalinan tunggal} & Saat satu \textit{node} mati dan belum diganti, tulisan baru pada \textit{shard} terdampak hanya tersimpan di satu \textit{primary} (\texttt{degraded: true}). Jika \textit{node} kedua ikut mati sebelum sinkronisasi tuntas, tulisan selama jeda tersebut berisiko hilang. & \path{docs/m2-details/consistency.md:8}, \path{aggregator/src/storage/mongoRepository.ts:104-109} \\
     \midrule
-    \textbf{Pembacaan berpotensi \textit{stale read} sesaat} & Kueri memakai \texttt{primaryPreferred} dan \textit{read concern} \texttt{local}. Pembacaan dari \textit{secondary} atau sesaat setelah pergantian \textit{primary} dapat tertinggal tipis dari oplog terbaru, meski tulisan berstatus \texttt{w: 2} tetap aman. & \path{docs/m2/consistency.md:17-18} \\
+    \textbf{Pembacaan berpotensi \textit{stale read} sesaat} & Kueri memakai \texttt{primaryPreferred} dan \textit{read concern} \texttt{local}. Pembacaan dari \textit{secondary} atau sesaat setelah pergantian \textit{primary} dapat tertinggal tipis dari oplog terbaru, meski tulisan berstatus \texttt{w: 2} tetap aman. & \path{docs/m2-details/consistency.md:17-18} \\
     \midrule
-    \textbf{Analitik dan \texttt{checksum} bukan \textit{snapshot} terisolasi} & Pemindaian menyeluruh memakai urutan kunci \texttt{\_id} dalam anggaran waktu $8.000\text{ ms}$ dengan stempel waktu \texttt{as\_of}. Bila penulisan aktif berlangsung bersamaan, perbandingan \texttt{checksum} dilakukan saat aliran tulis dihentikan sementara. & \path{docs/m2/consistency.md:11-12}, \path{aggregator/src/storage/mongoRepository.ts:219-317} \\
+    \textbf{Analitik dan \texttt{checksum} bukan \textit{snapshot} terisolasi} & Pemindaian menyeluruh memakai urutan kunci \texttt{\_id} dalam anggaran waktu $8.000\text{ ms}$ dengan stempel waktu \texttt{as\_of}. Bila penulisan aktif berlangsung bersamaan, perbandingan \texttt{checksum} dilakukan saat aliran tulis dihentikan sementara. & \path{docs/m2-details/consistency.md:11-12}, \path{aggregator/src/storage/mongoRepository.ts:219-317} \\
     \midrule
-    \textbf{Otomatisasi penggantian hanya untuk tiga slot tetap} & Skrip \path{p1-replace-node.sh} dirancang untuk menggantikan salah satu dari tiga slot yang ada. Penambahan \textit{node} keempat sebagai \textit{shard} baru berkapasitas ekstra belum diotomatiskan oleh skrip. & \path{docs/m2/decisions/ADR-0001-storage.md:42}, \path{scripts/m2/p1-replace-node.sh:1-12} \\
+    \textbf{Otomatisasi penggantian hanya untuk tiga slot tetap} & Skrip \path{p1-replace-node.sh} dirancang untuk menggantikan salah satu dari tiga slot yang ada. Penambahan \textit{node} keempat sebagai \textit{shard} baru berkapasitas ekstra belum diotomatiskan oleh skrip. & \path{docs/m2-details/decisions/ADR-0001-storage.md:42}, \path{scripts/m2/p1-replace-node.sh:1-12} \\
     \bottomrule
   \end{tabularx}
 \end{table}
 
 \subsubsection{Bukti Penyelesaian per Kriteria}
 
-Bukti berikut berasal dari eksekusi skrip pada klaster tiga VM (\texttt{node-a}, \texttt{node-c}, \texttt{node-d}). Keluaran teks lengkap tiap eksekusi tersimpan di repositori pada \path{docs/m2/proofs/}. Dataset katalog gempa resmi dari asisten belum tersedia, sehingga Kriteria 1 hingga 6 memakai katalog simulasi 50.000 kejadian yang dimuat melalui jalur \textit{ingest} yang sama.
+Bukti berikut berasal dari eksekusi skrip pada klaster tiga VM (\texttt{node-a}, \texttt{node-c}, \texttt{node-d}). Keluaran teks lengkap tiap eksekusi tersimpan di repositori pada \path{docs/m2-details/proofs/}. Dataset katalog gempa resmi dari asisten belum tersedia, sehingga Kriteria 1 hingga 6 memakai katalog simulasi 50.000 kejadian yang dimuat melalui jalur \textit{ingest} yang sama.
 
 
 \paragraph*{Kriteria 1: sebaran data per \textit{node}.}

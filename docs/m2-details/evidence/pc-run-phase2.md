@@ -288,7 +288,7 @@ Both were found because `p3-checks.sh` (3.1) failed during the proof run, and bo
 1. **Turning the PVMBG compatibility rule off did not turn it off.** `applyRulesPatch` left the field aliases in place when `enablePvmbgV2Compat` was set to false, and the validator applies the aliases whenever they exist. After the rule had been enabled once, a renamed field stayed accepted for good: `incompatible_rename: nothing was parked` and the replay recovered 0 (the run had 3 FAILs, the other 30 checks passed). Now turning the rule off clears the aliases (test added).
 2. **A held record stalled the poll cursor.** A later version of a report is held behind an earlier parked version of the same key (the per-key order). The hold returned `transient_queued`, which means "not committed", so the source's cursor never advanced and every poll (3 s) re-fetched and re-queued the whole stuck window. With the mock's additive mode (a random field changes on every response, so the bytes never repeat and cannot be de-duplicated) the parked list grew by hundreds of messages a minute (216 -> 315 in a few minutes), and the additive check saw "59 new messages parked". A held record is already safely in the inbox, so it now returns `held` and the poll is committed. After the fix the parked count stayed at 243 for 7 minutes.
 
-Failed runs of `3.1` are kept in `docs/m2/proofs/3.1/superseded/`.
+Failed runs of `3.1` are kept in `docs/m2-details/proofs/3.1/superseded/`.
 
 ## Satellite processor froze inside a batch, 2026-11-22 (P4 criteria 4 and 5)
 

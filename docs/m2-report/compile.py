@@ -132,7 +132,7 @@ def build_pdf(engine: str, output_name: str, passes: int) -> int:
             "Silakan pasang salah satu compiler berikut terlebih dahulu:\n"
             "  - Windows (MiKTeX)      : winget install MiKTeX.MiKTeX\n"
             "  - WSL Ubuntu (TeX Live) : sudo apt update && sudo apt install -y texlive-latex-extra texlive-lang-other texlive-fonts-recommended latexmk\n"
-            "Atau unggah isi folder docs/milestone-2/ langsung ke Overleaf.",
+            "Atau unggah isi folder docs/m2-report/ langsung ke Overleaf.",
             file=sys.stderr,
         )
         return 2
@@ -176,7 +176,7 @@ def build_pdf(engine: str, output_name: str, passes: int) -> int:
         print(f"[ERROR] Kompilasi selesai tetapi {built_pdf} tidak ditemukan.", file=sys.stderr)
         return 1
 
-    dest_pdf = ROOT_DIR / output_name
+    dest_pdf = ROOT_DIR.parent / output_name
     shutil.copy2(built_pdf, dest_pdf)
     print(f"[OK] PDF berhasil dibuat: {dest_pdf}")
     return 0
@@ -201,7 +201,7 @@ def main() -> int:
     parser.add_argument(
         "--output",
         default=DEFAULT_OUTPUT,
-        help=f"Nama file PDF keluaran di dalam docs/milestone-2/ (bawaan: {DEFAULT_OUTPUT})",
+        help=f"Nama file PDF keluaran di dalam docs/ (bawaan: {DEFAULT_OUTPUT})",
     )
     parser.add_argument(
         "--passes",

@@ -26,7 +26,7 @@ data:
       evaluation_interval: 30s
     scrape_configs:
       # Application pods that opt in with annotations prometheus.io/scrape=true, prometheus.io/port=<port>
-      # (contract: docs/m2/observability.md; services expose /metrics with http_requests_total and http_request_duration_seconds).
+      # (contract: docs/m2-details/observability.md; services expose /metrics with http_requests_total and http_request_duration_seconds).
       - job_name: bnpb-pods
         kubernetes_sd_configs:
           - role: pod
