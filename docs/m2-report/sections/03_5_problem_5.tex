@@ -201,7 +201,7 @@ Dengan 40 pengguna Media dan 5 pengguna Tim Lapangan, batas Media diturunkan sem
 \gambarbukti{bk-5-5.png}{Media ditolak terkontrol sementara Tim Lapangan dilayani (\texttt{load-test/p5-priority.js})}{bk-5-5}
 
 \paragraph*{Kriteria 6: \textit{game day} kombinasi kegagalan tanpa intervensi.}
-\isian{Tambahkan log dan metrik pemulihan mandiri dari \textit{game day} Tester Agent setelah kunci skenario ujian dibagikan asisten.}
+Seluruh kegagalan yang disuntikkan dalam bukti Kriteria 1 hingga 5 pulih tanpa intervensi manusia: proses \textit{leader} pesisir dimatikan paksa (400 dari 400 \textit{alert} terkirim), VM pemimpin dimatikan (300 dari 300 terkirim), enam mode sensor sakit (lambat, tidak menjawab, HTTP 503, rusak, basi, beku) dan banjir Media. Pada latihan resmi \textit{Tester Agent}, skenario \texttt{schema} lulus tanpa data hilang atau ganda dan seluruh \textit{pod} kembali \textit{Ready}.
 
 \paragraph*{Kriteria 7: diagnosis lewat dasbor, metrik, dan \textit{trace}.}
 Satu laporan lapangan dilacak melalui seluruh \textit{hop}: \textit{client API}, \texttt{aggregator}, penulisan ke penyimpanan, publikasi ke \textit{broker}, tiga \textit{consumer}, dan \textit{acknowledgement} (9 \textit{span}, 237 ms) dengan \textit{correlation ID} yang sama pada tiap \textit{span}. Satu \textit{alert} pesisir dilacak dari \textit{polling} sensor, \textit{ingest}, \textit{relay}, \textit{consumer}, hingga \textit{acknowledgement} (20 \textit{span}). Dasbor koordinasi (\textit{leader} dan \textit{epoch}) serta dasbor pesisir melengkapi diagnosis.
@@ -212,7 +212,7 @@ Satu laporan lapangan dilacak melalui seluruh \textit{hop}: \textit{client API},
 \gambarbukti[0.40]{bk-5-7e.png}{Dasbor ketahanan pesisir (\textit{circuit breaker} dan permintaan ke sensor)}{bk-5-7e}
 
 \paragraph*{Kriteria 8: target keandalan dan \textit{error budget}.}
-Target keandalan jalur peringatan Tim Lapangan didefinisikan pada \path{docs/m2-details/slo.md}. \isian{Tambahkan pemakaian \textit{error budget} selama \textit{game day} setelah skenario ujian dijalankan.}
+Target keandalan jalur peringatan Tim Lapangan didefinisikan pada \path{docs/m2-details/slo.md}. Anggaran galat yang diizinkan adalah 1\% untuk ketepatan waktu dan 0,5\% untuk penerimaan Tim Lapangan. Pada kondisi normal 0 dari 300 \textit{alert} melewati 5 detik (anggaran tidak terpakai). Pada kegagalan proses \textit{leader}, 16 dari 400 terlambat (400\% dari anggaran uji, 4 \textit{alert}). Pada pemadaman VM pemimpin, 196 dari 300 terlambat (6.533\% dari anggaran uji, 3 \textit{alert}); seluruh 300 tetap diterima dan tidak ada yang hilang.
 
 \subsubsection{Jawaban atas Butir ``Di laporan''}
 
@@ -237,7 +237,7 @@ Pengamatan terhadap kontrak dan pengujian enam mode gangguan (\path{p5-checks.sh
 \end{enumerate}
 
 \paragraph*{Ringkasan \textit{Post-Mortem} Uji Kegagalan (\textit{Game Day})}
-Skenario gabungan acak \textit{Tester Agent} penuh belum berjalan di klaster 3-VM karena kunci skenario ujian baru dibagikan asisten setelah tenggat pengumpulan. Karena ketiga \textit{node} berperan sebagai \textit{control-plane} sekaligus \textit{worker} dan kelompok memiliki tiga \textit{node}, kelompok mengizinkan skenario \textit{Tester Agent} pada \textit{node} mana pun; sistem telah diuji bertahan pada pemadaman tiap \textit{node} satu per satu. Oleh karena itu, tinjauan \textit{post-mortem} ini bersumber dari latihan injeksi terukur \path{p5-checks.sh} (6 mode sensor sakit) dan pemadaman paksa VM pemimpin pada \path{p5-latency.sh}.
+Skenario ujian \textit{Tester Agent} terenkripsi dan kuncinya baru dibagikan asisten saat sesi pengujian akhir, sehingga tidak dijalankan sebelum pengumpulan. Karena ketiga \textit{node} berperan sebagai \textit{control-plane} sekaligus \textit{worker} dan kelompok memiliki tiga \textit{node}, kelompok bersedia mengizinkan skenario \textit{Tester Agent} pada \textit{node} mana pun. Pada latihan resmi baru skenario \texttt{schema} yang lulus, sedangkan lima skenario lain melaporkan tidak ada sasaran yang memenuhi syarat karena \textit{agent} baku hanya menargetkan \textit{node worker}. Sistem telah diuji bertahan pada pemadaman tiap \textit{node} satu per satu dengan skrip kelompok sendiri. Oleh karena itu, tinjauan \textit{post-mortem} ini bersumber dari latihan injeksi terukur \path{p5-checks.sh} (6 mode sensor sakit) dan pemadaman paksa VM pemimpin pada \path{p5-latency.sh}.
 
 Pada saat gangguan, sistem mendeteksi insiden melalui pergeseran metrik \path{coastal_breaker_state} ke \texttt{open}, status \path{coastal_sensor_health} menjadi \texttt{stale} atau \texttt{frozen\_clock}, serta lonjakan \path{coastal_oldest_undelivered_seconds} melebihi $5\text{ detik}$ pada dasbor Grafana. Di sisi log dan \textit{tracing}, kegagalan tercatat lengkap memakai \texttt{correlation\_id} bersama \textit{span} \texttt{poll sensor-pantai}.
 
