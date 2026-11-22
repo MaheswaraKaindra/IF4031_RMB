@@ -1,0 +1,23 @@
+# proof: 2.2
+# date: 2026-11-22T12:40:14+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p2-single-fetch.sh
+# artificial case: none
+
+records listed: 178940, distinct: 178940
+PASS: no duplicate HazardEvent in the store (0 repeated source/source_ref_id)
+PASS: mock-bmkg: one caller in 60s (aggregator-5f74dccb5f-zw8z7)
+PASS: mock-bmkg: the caller is the Lease holder (aggregator-5f74dccb5f-zw8z7)
+PASS: mock-bmkg: 20 polls in 60s (not multiplied, limit 32)
+PASS: mock-pvmbg: one caller in 60s (aggregator-5f74dccb5f-zw8z7)
+PASS: mock-pvmbg: the caller is the Lease holder (aggregator-5f74dccb5f-zw8z7)
+PASS: mock-pvmbg: 17 polls in 60s (not multiplied, limit 32)
+>>> every source has exactly one leader, and the satellite feed and the coastal sensor have exactly one caller
+PASS: BMKG: exactly one pod reports itself leader (1 of 4)
+PASS: PVMBG: exactly one pod reports itself leader (1 of 4)
+PASS: SATELIT: exactly one pod reports itself leader (1 of 4)
+PASS: SENSOR_PANTAI: exactly one pod reports itself leader (1 of 4)
+PASS: SENSOR_PANTAI: exactly one pod sent requests to the sensor in 20 s
+PASS: SATELIT: exactly one pod holds the feed connection (its feed offset moved on 1 pod; 1 pods carry the gauge)
+ALL CHECKS PASSED
+# exit code: 0

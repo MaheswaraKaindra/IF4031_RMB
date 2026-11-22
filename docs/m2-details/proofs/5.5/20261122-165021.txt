@@ -1,0 +1,17 @@
+# proof: 5.5
+# date: 2026-11-22T16:50:21+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: bash /home/nathanieljr/repos-wsl/IF4031_RMB/scripts/m2/proof.sh _priority
+# artificial case: the Media ceiling is lowered to 4 in flight per client-api pod (normally 30), with 40 Media and 5 Tim Lapangan users, because the VMs serve only about 50 req/s
+
+     ✓ status 200 or 429
+     ✓ report accepted 202
+   ✓ accepted_field_report..........: 120     3.042074/s
+     http_req_duration..............: avg=94.77ms  med=36.3ms   p(90)=259.44ms p(95)=423.05ms p(99)=921.09ms max=2.79s   
+     ✓ { client:field_team }........: avg=435.43ms med=378.94ms p(90)=774.55ms p(95)=981.09ms p(99)=1.42s    max=2.25s   
+   ✓ refused_field_report...........: 0       0/s
+   ✓ rejected_field_team............: 0       0/s
+     rejected_media.................: 16889   428.146574/s
+     served_field_team..............: 452     11.458479/s
+     served_media...................: 2225    56.405123/s
+# exit code: 0

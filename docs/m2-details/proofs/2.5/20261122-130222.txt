@@ -1,0 +1,20 @@
+# proof: 2.5
+# date: 2026-11-22T13:02:22+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p2-freeze.sh
+# artificial case: none
+
+leader of aggregator-poller-bmkg: aggregator-5f74dccb5f-bf6c2 on node-a
+>>> freezing node-a for 28s
+PASS: another instance (aggregator-5f74dccb5f-mcnt9) holds the lease while aggregator-5f74dccb5f-bf6c2 is frozen
+>>> waking node-a
+PASS: the woken instance stopped acting as leader after ~1s (false false)
+PASS: freeze and wake of aggregator-5f74dccb5f-bf6c2: 10 sampling rounds saw a valid leader (at least 10 needed)
+PASS: freeze and wake of aggregator-5f74dccb5f-bf6c2: never two valid leaders in the same round
+after waking: upstream polls by the old leader=0, fencing/revocation log lines=0
+PASS: the woken instance made at most 0 upstream poll(s) before it noticed
+PASS: no duplicate HazardEvent after the freeze
+PASS: no record lost (2 derived wildfire record(s) were retracted by the feed meanwhile, which is normal and checked by satellite-tool reference)
+leadership changes: 1
+ALL CHECKS PASSED
+# exit code: 0

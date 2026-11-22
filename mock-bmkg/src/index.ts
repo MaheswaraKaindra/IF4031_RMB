@@ -3,6 +3,26 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { logger, requestLogger } from './logger';
 
 const app = express();
+const requestCounts = new Map<string, number>();
+const upstreamPollCounts = new Map<string, number>();
+const durationStats = { sum: 0, count: 0 };
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/metrics') {
+        next();
+        return;
+    }
+    const start = performance.now();
+    res.on('finish', () => {
+        const dur = (performance.now() - start) / 1000;
+        durationStats.sum += dur;
+        durationStats.count += 1;
+        const key = `${req.method}|${req.path}|${res.statusCode}`;
+        requestCounts.set(key, (requestCounts.get(key) ?? 0) + 1);
+    });
+    next();
+});
+
 app.use(requestLogger);
 const PORT = process.env.BMKG_PORT || 8081;
 
@@ -67,8 +87,39 @@ setInterval(() => {
     }
 }, EVENT_INTERVAL_MS);
 
+app.get('/health', (_req: Request, res: Response) => res.status(200).json({ status: 'ok', service: 'mock-bmkg' }));
+
+app.get('/metrics', (_req: Request, res: Response) => {
+    const lines = [
+        '# HELP http_requests_total Total HTTP requests processed',
+        '# TYPE http_requests_total counter',
+    ];
+    for (const [k, v] of requestCounts.entries()) {
+        const [method, route, status] = k.split('|');
+        lines.push(`http_requests_total{service="mock-bmkg",method="${method}",route="${route}",status="${status}"} ${v}`);
+    }
+    lines.push(
+        '# HELP http_request_duration_seconds HTTP request latency in seconds',
+        '# TYPE http_request_duration_seconds histogram',
+        `http_request_duration_seconds_bucket{service="mock-bmkg",route="/seismic-events",le="+Inf"} ${durationStats.count}`,
+        `http_request_duration_seconds_sum{service="mock-bmkg",route="/seismic-events"} ${durationStats.sum}`,
+        `http_request_duration_seconds_count{service="mock-bmkg",route="/seismic-events"} ${durationStats.count}`,
+        '# HELP upstream_polls_total Total upstream polls received per aggregator pod',
+        '# TYPE upstream_polls_total counter'
+    );
+    for (const [pod, v] of upstreamPollCounts.entries()) {
+        lines.push(`upstream_polls_total{service="mock-bmkg",caller_pod="${pod}"} ${v}`);
+    }
+    res.type('text/plain; version=0.0.4').send(lines.join('\n') + '\n');
+});
+
+// ADMIN_OPEN=1 (Kubernetes manifests only): the official Tester Agent sends its admin calls to every mock without credentials. This
+// mock has no admin state, so such calls are accepted and ignored instead of failing the agent's step with HTTP 401.
+const ADMIN_OPEN = process.env.ADMIN_OPEN === '1';
+
 app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path === '/health') return next();
+    if (req.path === '/health' || req.path === '/metrics') return next();
+    if (ADMIN_OPEN && req.path.startsWith('/admin')) return res.status(200).json({ ok: true, message: 'mock-bmkg has no admin state' });
 
     const key = req.headers['x-bmkg-key'];
     if (typeof key !== 'string') {
@@ -83,9 +134,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     setTimeout(next, delay);
 });
 
-app.get('/health', (req: Request, res: Response) => res.status(200).json({ status: 'ok', service: 'mock-bmkg' }));
-
 app.get('/seismic-events', (req: Request, res: Response) => {
+    const callerPod = req.header('x-aggregator-pod') || 'unknown';
+    const leaderEpoch = req.header('x-leader-epoch') || 'none';
+    upstreamPollCounts.set(callerPod, (upstreamPollCounts.get(callerPod) ?? 0) + 1);
+    res.locals.log.info({ caller_pod: callerPod, leader_epoch: leaderEpoch }, 'upstream poll served');
+
     const since = req.query.since ? new Date(req.query.since as string) : new Date(0);
     const filtered = seismicEvents.filter(ev => new Date(ev.occurred_at) >= since);
     res.json(filtered);

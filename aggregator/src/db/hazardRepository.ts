@@ -1,5 +1,8 @@
 import type { Filter } from 'mongodb';
-import { getHazards, getSourceStatus } from './mongo.js';
+import { getHazards, getSourceStatus, isSharded } from './mongo.js';
+import { getRepository } from '../storage/runtime.js';
+import { hazardIdFor } from '../storage/identity.js';
+import { logger } from '../logger.js';
 import type { HazardEvent } from '../utils/mapper.js';
 
 const MAX_LIMIT = 200;
@@ -16,11 +19,17 @@ export interface SourceStatus {
     last_failure_at: string | null; // set while the latest poll failed, null when the source is healthy
 }
 
-export type SourceStatuses = Record<'BMKG' | 'PVMBG', SourceStatus>;
+export type SourceStatuses = Record<'BMKG' | 'PVMBG' | 'SENSOR_PANTAI', SourceStatus>;
 
 // true only when a new document was inserted (false = it already existed and was only updated).
 // hazard_id and ingested_at are set on insert only: they keep the first value when the same record is fetched again.
 export async function upsertHazard(h: HazardEvent): Promise<boolean> {
+    if (isSharded()) {
+        const r = await getRepository().ingest({ event: h });
+        if (r.outcome === 'unavailable') throw new Error(`store unavailable: ${r.detail ?? 'unknown outcome'}`);
+        if (r.degraded) logger.warn({ hazard_id: r.hazard_id, detail: r.detail }, 'degraded write: stored on one copy until the shard member re-syncs');
+        return r.created === true;
+    }
     const hazards = getHazards();
     const { hazard_id, ingested_at, ...rest } = h;
     const result = await hazards.updateOne(
@@ -29,6 +38,19 @@ export async function upsertHazard(h: HazardEvent): Promise<boolean> {
         { upsert: true }
     );
     return result.upsertedCount > 0;
+}
+
+export interface HazardsPage {
+    events: HazardEvent[];
+    partial: boolean;
+    unavailable_units: string[];
+}
+
+// Sharded layout: answers even when a storage unit is unreachable, flagging the result as partial.
+export async function findHazardsPaged(filter: HazardFilter, limit: number): Promise<HazardsPage> {
+    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), MAX_LIMIT) : MAX_LIMIT;
+    const page = await getRepository().queryGlobal({ sort: 'occurred_desc', limit: safeLimit, filter });
+    return { events: page.items as HazardEvent[], partial: page.partial, unavailable_units: page.unavailable_units };
 }
 
 export async function findHazards(filter: HazardFilter, limit: number): Promise<HazardEvent[]> {
@@ -51,7 +73,7 @@ export async function findHazards(filter: HazardFilter, limit: number): Promise<
     return docs.map(({ _id, ...rest }) => rest);
 }
 
-export async function markSourceSuccess(source: 'BMKG' | 'PVMBG'): Promise<void> {
+export async function markSourceSuccess(source: 'BMKG' | 'PVMBG' | 'SENSOR_PANTAI'): Promise<void> {
     await getSourceStatus().updateOne(
         { _id: source },
         { $set: { last_success_at: new Date().toISOString() }, $unset: { last_failure_at: '' } },
@@ -59,7 +81,7 @@ export async function markSourceSuccess(source: 'BMKG' | 'PVMBG'): Promise<void>
     );
 }
 
-export async function markSourceFailure(source: 'BMKG' | 'PVMBG'): Promise<void> {
+export async function markSourceFailure(source: 'BMKG' | 'PVMBG' | 'SENSOR_PANTAI'): Promise<void> {
     await getSourceStatus().updateOne(
         { _id: source },
         { $set: { last_failure_at: new Date().toISOString() } },
@@ -72,6 +94,7 @@ export async function getSourceStatuses(): Promise<SourceStatuses> {
     const statuses: SourceStatuses = {
         BMKG: { last_success_at: null, last_failure_at: null },
         PVMBG: { last_success_at: null, last_failure_at: null },
+        SENSOR_PANTAI: { last_success_at: null, last_failure_at: null },
     };
     for (const d of docs) {
         statuses[d._id] = { last_success_at: d.last_success_at ?? null, last_failure_at: d.last_failure_at ?? null };
@@ -83,7 +106,7 @@ export async function findHazardBySourceRef(
     source: HazardEvent['source'],
     sourceRefId: string
 ): Promise<HazardEvent | null> {
-    const doc = await getHazards().findOne({ source, source_ref_id: sourceRefId });
+    const doc = await getHazards().findOne(isSharded() ? { _id: hazardIdFor(source, sourceRefId) as never } : { source, source_ref_id: sourceRefId });
     if (!doc) return null;
     const { _id, ...rest } = doc as any;
     return rest as HazardEvent;
@@ -94,11 +117,18 @@ export async function findHazardBySourceRef(
 export async function attachTsunamiWarning(
     hazardId: string,
     newSeverity: HazardEvent['severity'],
-    tsunamiWarning: unknown
+    tsunamiWarning: unknown,
+    epoch?: number | undefined
 ): Promise<boolean> {
-    const result = await getHazards().updateOne(
-        { hazard_id: hazardId },
-        { $set: { severity: newSeverity, 'attributes.tsunami_warning': tsunamiWarning } }
-    );
+    const base: Record<string, unknown> = isSharded() ? { _id: hazardId as never } : { hazard_id: hazardId };
+    const filter =
+        epoch === undefined
+            ? base
+            : { ...base, $or: [{ fence_epoch: { $exists: false } }, { fence_epoch: { $lte: epoch } }] };
+    const update: Record<string, unknown> = {
+        $set: { severity: newSeverity, 'attributes.tsunami_warning': tsunamiWarning },
+        ...(epoch === undefined ? {} : { $max: { fence_epoch: epoch } }),
+    };
+    const result = await getHazards().updateOne(filter, update);
     return result.modifiedCount > 0;
 }

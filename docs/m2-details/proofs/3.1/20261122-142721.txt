@@ -1,0 +1,46 @@
+# proof: 3.1
+# date: 2026-11-22T14:27:21+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p3-checks.sh
+# artificial case: none
+
+>>> 5. only BNPB Ops can inspect parked messages
+PASS: media -> /unprocessed is 403
+PASS: field-team -> /unprocessed is 403
+PASS: bnpb-ops -> /unprocessed is 200
+>>> 1/2. schema policy: additive accepted, incompatible parked with reason
+PASS: additive change (new field) is accepted automatically, nothing parked
+PASS: incompatible_rename: 14 new message(s) parked
+PASS: incompatible_type: 14 new message(s) parked
+PASS: incompatible_missing: 14 new message(s) parked
+PASS: every parked message keeps its reason, source, time and a retryable flag
+PASS: permanent failures are marked retryable=false
+>>> 3. malformed payloads: no crash, no restart, other data keeps flowing
+PASS: truncated_json: kept whole and parked as malformed_json
+PASS: truncated_json: the parked copy is byte-identical to what the sensor sent (message id = hash of the original bytes)
+PASS: deeply_nested: kept whole and parked as max_depth_exceeded
+PASS: deeply_nested: the parked copy is byte-identical to what the sensor sent (message id = hash of the original bytes)
+PASS: invalid_utf8: kept whole and parked as invalid_utf8
+PASS: invalid_utf8: the parked copy is byte-identical to what the sensor sent (message id = hash of the original bytes)
+PASS: oversized: kept whole and parked as payload_too_large
+PASS: oversized: the parked copy is byte-identical to what the sensor sent (message id = hash of the original bytes)
+PASS: aggregator restart count unchanged (0)
+PASS: all aggregator pods Ready
+PASS: BMKG kept flowing (70407 -> 70415 records)
+>>> 4. replay: fewer parked, no duplicates
+schema rules: {"enablePvmbgV2Compat":true,"fieldAliases":{"mountain_code":"volcano_id","status_level":"alert_level"},"coerceNumericStrings":true,"defaults":{}}
+PASS: the schema rule saved through one pod is in force on EVERY aggregator pod
+PASS: the schema rule survived the restart of a pod (it is stored, not in memory)
+replay: {"scanned":60,"recovered":14,"blocked_by_key":25,"still_failed":21}
+PASS: replay recovered 14 message(s); 21 stay parked because they cannot be read without a code change
+PASS: parked messages went from 47 to 46
+PASS: a second replay recovers nothing more: everything the new rules can recover was recovered by the first
+PASS: no duplicate HazardEvent after the replay
+>>> 6. durable 202 with the broker down and every aggregator killed right after
+PASS: 20/20 reports answered 202 while the broker was down
+PASS: all 202 answers took under 1 s
+PASS: aggregator pods recovered on their own
+PASS: no 202'd report was lost
+PASS: no report was stored twice
+ALL CHECKS PASSED
+# exit code: 0

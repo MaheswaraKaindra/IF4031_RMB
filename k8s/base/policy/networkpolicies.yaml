@@ -1,0 +1,97 @@
+# Ingress isolation, enforced by the CNI (k3s ships a NetworkPolicy controller; kind's kindnet enforces it too on recent
+# versions, verify with scripts/m2/verify-isolation.sh). Egress is intentionally unrestricted: this project's
+# requirement is "no component can CONNECT TO storage it does not own", which ingress rules on the storage pods give.
+# Kubelet probes are always allowed by NetworkPolicy semantics.
+#
+# Tester Agent (hostNetwork: its source address depends on the CNI and cannot be pinned reliably) and external clients
+# (k6, assistants) must never be blocked, so the ONLY pods that accept any source are the ones protected by their own
+# credentials: the mocks (admin endpoints need their token) and the aggregator's audit port 3001 (Bearer audit token).
+# Storage, broker and the M1 internal API (aggregator :3000) stay restricted to their legitimate callers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-client-api
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: client-api}}
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{protocol: TCP, port: 8080}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-service
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: auth-service}}
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{protocol: TCP, port: 8090}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-aggregator-from-client-api
+spec:
+  podSelector: {matchLabels: {role: aggregator}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: client-api}}
+        - podSelector: {matchLabels: {role: consumer}}
+      ports: [{protocol: TCP, port: 3000}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mocks
+spec:
+  podSelector: {matchLabels: {role: mock}}
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{protocol: TCP, port: 8081}, {protocol: TCP, port: 8082}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-aggregator-audit
+spec:
+  podSelector: {matchLabels: {role: aggregator}}
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{protocol: TCP, port: 3001}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rabbitmq-from-publishers-and-consumers
+spec:
+  podSelector: {matchLabels: {role: broker}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {role: aggregator}}
+        - podSelector: {matchLabels: {role: consumer}}
+      ports: [{protocol: TCP, port: 5672}]
+    - from:
+        - podSelector: {matchLabels: {role: broker}}
+      ports: [{protocol: TCP, port: 4369}, {protocol: TCP, port: 25672}]
+---
+# Temporary single-node Mongo (M1 layout). The sharded store has its own policy in k8s/store/policy.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mongo-from-aggregator
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: mongo}}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {role: aggregator}}}]
+      ports: [{protocol: TCP, port: 27017}]

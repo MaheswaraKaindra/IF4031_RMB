@@ -1,11 +1,12 @@
-import crypto from "crypto";
+import { hazardIdFor } from "../storage/identity.js";
+import type { HazardType, Severity, Source } from "../storage/types.js";
 
 export interface HazardEvent {
     hazard_id: string;
-    source: 'BMKG' | 'PVMBG';
+    source: Source;
     source_ref_id: string;
-    hazard_type: 'SEISMIC' | 'VOLCANIC';
-    severity: 'NORMAL' | 'WASPADA' | 'SIAGA' | 'AWAS';
+    hazard_type: HazardType;
+    severity: Severity;
     area_name: string;
     latitude: number;
     longitude: number;
@@ -59,7 +60,7 @@ export function mapSeismicToHazard(raw: any, tsunamiWarning?: any): HazardEvent 
     }
 
     return {
-        hazard_id: `HZ-${crypto.randomUUID()}`,
+        hazard_id: hazardIdFor('BMKG', event_id), // deterministic (storage identity), see storage/identity.ts
         source: 'BMKG',
         source_ref_id: event_id,
         hazard_type: 'SEISMIC',
@@ -110,7 +111,7 @@ export function mapVolcanicToHazard(raw: any): HazardEvent {
     } = raw;
 
     return {
-        hazard_id: `HZ-${crypto.randomUUID()}`,
+        hazard_id: hazardIdFor('PVMBG', report_id),
         source: 'PVMBG',
         source_ref_id: report_id,
         hazard_type: 'VOLCANIC',

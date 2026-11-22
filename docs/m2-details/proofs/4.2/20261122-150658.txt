@@ -1,0 +1,21 @@
+# proof: 4.2
+# date: 2026-11-22T15:06:58+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: bash /home/nathanieljr/repos-wsl/IF4031_RMB/scripts/m2/proof.sh _late
+# artificial case: unit tests with injected late detections (the live feed produced none)
+
+ok 4 - a low-confidence detection kept aside joins the fire when an update raises its confidence
+ok 11 - retracting the bridge splits one fire into two singletons and removes the fire
+ok 12 - retracting an end detection shrinks the fire in place and keeps its identity when the earliest stays
+ok 16 - retract then re-add restores the same fire as never retracting
+ok 17 - an update that downgrades a detection to low confidence removes it from the fire
+ok 18 - an update that raises FRP changes the fire in place
+ok 21 - stream generator exercises fires, splits, retractions and late detections
+ok 22 - processor: late detections are reported and excluded, heartbeats move the watermark
+ok 23 - processor: a retracted key stays retracted when the feed re-sends it
+ok 24 - processor: an update or retract for an unknown key is counted, not applied
+ok 28 - crash after the checkpoint, with the rest of the feed arriving later, yields the same final set
+# tests 35
+# pass 35
+# fail 0
+# exit code: 0

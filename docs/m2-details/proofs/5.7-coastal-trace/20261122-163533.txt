@@ -1,0 +1,29 @@
+# proof: 5.7-coastal-trace
+# date: 2026-11-22T16:35:33+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: bash /home/nathanieljr/repos-wsl/IF4031_RMB/scripts/m2/proof.sh _trace_coastal
+# artificial case: none
+
+trace fd45a220c01f7ea55f8a6c105daa01af - 20 spans
+  start ms     dur ms  service            span                                 parent
+       0.0      315.0  aggregator         poll sensor-pantai                   -
+      29.0      159.0  aggregator         coastal critical ingest              poll sensor-pantai
+      29.0      191.0  aggregator         coastal critical ingest              poll sensor-pantai
+      29.0      185.0  aggregator         coastal critical ingest              poll sensor-pantai
+      29.0      173.0  aggregator         coastal critical ingest              poll sensor-pantai
+      30.0      196.0  aggregator         coastal critical ingest              poll sensor-pantai
+      30.0      186.0  aggregator         coastal critical ingest              poll sensor-pantai
+      30.0      200.0  aggregator         coastal critical ingest              poll sensor-pantai
+     413.0       66.0  aggregator         relay critical                       coastal critical ingest
+     424.0       56.0  aggregator         relay critical                       coastal critical ingest
+     442.0       42.0  consumer-notifier  consume q_critical_alerts_v2         relay critical
+     449.0       51.0  consumer-notifier  consume q_critical_alerts_v2         relay critical
+     456.0       41.0  aggregator         POST /internal/deliveries/ack        relay critical
+     457.0       26.0  aggregator         POST /internal/deliveries/ack        relay critical
+     479.0       39.0  aggregator         relay critical                       coastal critical ingest
+     490.0       24.0  consumer-notifier  consume q_critical_alerts_v2         relay critical
+     501.0       12.0  aggregator         POST /internal/deliveries/ack        relay critical
+     518.0       31.0  aggregator         relay critical                       coastal critical ingest
+     531.0       37.0  consumer-notifier  consume q_critical_alerts_v2         relay critical
+     543.0       22.0  aggregator         POST /internal/deliveries/ack        relay critical
+# exit code: 0

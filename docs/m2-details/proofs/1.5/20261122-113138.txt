@@ -1,0 +1,31 @@
+# proof: 1.5
+# date: 2026-11-22T11:31:38+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p1-write-probe.sh 270 scripts/m2/p1-node-loss.sh 3
+# artificial case: none
+
+>>> 04:31:48 starting the loss: scripts/m2/p1-node-loss.sh 3
+    cmd: >>> replacement joined with empty disks; monitoring until MONITOR_SECONDS=150s
+    cmd: partial  /internal/audit/checksum unavailable=["scan-timeout"]
+    cmd: partial  /internal/analytics/summary unavailable=["scan-timeout"]
+    cmd: answers: audit/analytics complete=45 explicit_partial=3 | client-api ok=16 slow(>2s)=0 | bad=0
+    cmd: >>> waiting for re-sync / redundancy (up to 20 min)
+    cmd: redundancy restored: [{"unit":"shard-1","counts":[59185,59185]},{"unit":"shard-2","counts":[59234,59234]},{"unit":"shard-3","counts":[59305,59305]}]
+    cmd: records before=177266 after=177755 lost=0
+    cmd: after (evidence; counts may be higher because ingestion continued):
+    cmd: {"source":"BMKG","count":69378,"checksum":"f7a6873b2e8c29f370b4cdd33e5f661fbd5ac19c089fb85d9032dc011e46e759","partial":false}
+    cmd: {"source":"PVMBG","count":8389,"checksum":"ef2f6ab75464f3361ebf0fddda038fd550a9a77b3aadefa2a25a9b41df9c12ad","partial":false}
+    cmd: {"source":"SATELIT","count":31187,"checksum":"d671661f52cd40fa3baab87529702f3025687d7e008605d7e60ac06544da90ca","partial":false}
+    cmd: {"source":"SENSOR_PANTAI","count":66475,"checksum":"37b9272caf9d09e6ec3657ce90a6581d02b246d96ccb88f9e21794d9259ec7f4","partial":false}
+    cmd: PASS: no HazardEvent lost (every pre-loss record is still stored)
+    cmd: PASS: no 5xx / hung request during the loss and recovery
+    cmd: next: run again with a DIFFERENT slot to prove the system survives the next loss (criterion 6)
+writes: 496 sent, 496 answered 202
+  202 answers slower than 1 s: 0
+  202 latency p50 0.03 s, p95 0.07 s, max 0.34 s
+>>> waiting up to 3 min for the reports to reach the store
+PASS: all 496 reports answered 202 are in the store
+PASS: no report stored twice
+PASS: every write was accepted (no refusal or timeout during the window)
+ALL CHECKS PASSED
+# exit code: 0

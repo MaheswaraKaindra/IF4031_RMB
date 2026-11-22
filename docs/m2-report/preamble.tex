@@ -1,0 +1,160 @@
+% Preamble template laporan Milestone 2 IF4031 (mengacu pada gaya IF4031_M1_RMB.pdf)
+
+\usepackage[a4paper,margin=2.54cm,headheight=15pt]{geometry}
+\usepackage{iftex}
+
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+  \usepackage{mathptmx}
+  \usepackage[scaled=0.88]{helvet}
+  \usepackage{courier}
+\else
+  \usepackage{fontspec}
+  \IfFontExistsTF{Times New Roman}{
+    \setmainfont{Times New Roman}
+  }{
+    \IfFontExistsTF{TeX Gyre Termes}{
+      \setmainfont{TeX Gyre Termes}
+    }{}
+  }
+  \IfFontExistsTF{Roboto Mono}{
+    \setmonofont[Scale=0.88]{Roboto Mono}
+  }{
+    \IfFontExistsTF{Courier New}{
+      \setmonofont[Scale=0.88]{Courier New}
+    }{}
+  }
+\fi
+
+\usepackage[indonesian]{babel}
+\usepackage{graphicx}
+\graphicspath{{figures/}{figures/proofs/}{../evidence/}}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{caption}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds}
+\usepackage{microtype}
+\usepackage[normalem]{ulem}
+\usepackage{hyperref}
+
+\onehalfspacing
+\emergencystretch=2.5em
+
+% Warna selaras gaya dokumen M1 (#1155CC untuk tautan)
+\definecolor{linkblue}{HTML}{1155CC}
+\definecolor{codebg}{HTML}{F7F7F7}
+\definecolor{codeborder}{HTML}{DDDDDD}
+\definecolor{hintgray}{HTML}{555555}
+\definecolor{hintbg}{HTML}{F9F9F9}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=linkblue,
+  citecolor=linkblue,
+  pdftitle={IF4031 Milestone 2 - RMB Distributed},
+  pdfauthor={Kelompok 11: RMB}
+}
+
+% Format judul bab/subbab seperti IF4031_M1_RMB.pdf (14pt Bold + titik di belakang nomor)
+\titleformat{\section}
+  {\normalfont\fontsize{14}{17}\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}
+  {\normalfont\fontsize{13}{16}\bfseries}{\thesubsection.}{0.6em}{}
+\titleformat{\subsubsection}
+  {\normalfont\fontsize{12}{15}\bfseries}{\thesubsubsection.}{0.6em}{}
+
+\titlespacing*{\section}{0pt}{14pt}{6pt}
+\titlespacing*{\subsection}{0pt}{11pt}{4pt}
+\titlespacing*{\subsubsection}{0pt}{8pt}{3pt}
+
+% Penomoran Gambar dan Tabel mengikuti hirarki subbab aktif (mis. Gambar 2.1.1, Tabel 3.1.3.1)
+\makeatletter
+\@addtoreset{figure}{section}
+\@addtoreset{figure}{subsection}
+\@addtoreset{figure}{subsubsection}
+\@addtoreset{table}{section}
+\@addtoreset{table}{subsection}
+\@addtoreset{table}{subsubsection}
+\renewcommand{\thefigure}{%
+  \ifnum\value{subsubsection}>0 \thesubsubsection.\arabic{figure}%
+  \else\ifnum\value{subsection}>0 \thesubsection.\arabic{figure}%
+  \else\thesection.\arabic{figure}\fi\fi}
+\renewcommand{\thetable}{%
+  \ifnum\value{subsubsection}>0 \thesubsubsection.\arabic{table}%
+  \else\ifnum\value{subsection}>0 \thesubsection.\arabic{table}%
+  \else\thesection.\arabic{table}\fi\fi}
+\makeatother
+
+\captionsetup{font=small,labelfont=bf,justification=centering}
+\captionsetup[table]{position=top,skip=4pt}
+\captionsetup[figure]{position=bottom,skip=6pt}
+
+% Header & footer
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\textcolor{black}{IF4031 Arsitektur Aplikasi Terdistribusi}}
+\rhead{\small\textcolor{black}{Kelompok 11: RMB}}
+\cfoot{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Daftar dan kode sumber
+\setlist[itemize]{leftmargin=1.5em,itemsep=2pt,topsep=4pt}
+\setlist[enumerate]{leftmargin=1.5em,itemsep=2pt,topsep=4pt}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeborder},
+  breaklines=true,
+  columns=flexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2
+}
+
+% Helper penanda isian kosong agar mudah dicari dan rapi di paragraf, list, maupun tabel
+\newcommand{\isian}[1]{\textcolor{hintgray}{\textit{[ISIAN: #1]}}}
+
+\newcommand{\blokisian}[1]{%
+  \par\noindent\fcolorbox{codeborder}{hintbg}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+      \small\textcolor{hintgray}{\textit{[ISIAN: #1]}}%
+    }%
+  }\par\vspace{4pt}%
+}
+
+\newcommand{\slotgambar}[2]{%
+  \begin{figure}[H]
+    \centering
+    \fbox{\parbox[c][4.2cm][c]{0.85\linewidth}{\centering\small\textcolor{hintgray}{\textit{[Tempelkan gambar/screenshot: #1]}}}}
+    % Ganti kotak di atas saat mengisi laporan dengan:
+    % \includegraphics[width=0.92\linewidth]{nama-file.png}
+    \caption{#2}
+  \end{figure}
+}
+
+% Bukti pengujian: tangkapan layar hasil eksekusi pada klaster 3-VM (tinggi dibatasi agar tidak melebihi halaman)
+\newcommand{\gambarbukti}[4][0.36]{%
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.94\linewidth,height=#1\textheight,keepaspectratio]{#2}
+    \caption{#3}\label{fig:#4}
+  \end{figure}
+}

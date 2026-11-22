@@ -1,0 +1,29 @@
+# proof: 5.7-coastal-run
+# date: 2026-11-22T16:32:29+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p5-latency.sh
+# artificial case: none
+
+coastal leader: aggregator-6768dc4cd8-hckbs on node-c; scenario: baseline
+>>> no failure
+{"run":"mwrn3q2k","emitted":30,"skipped":0,"clock_offset_start_ms":-566.5,"clock_offset_end_ms":-742.5}
+>>> waiting for the last alerts to be delivered (up to 240 s)
+time from the end of emission until every alert was delivered, or until we gave up: 20 s
+{
+  "emitted": 30,
+  "delivered": 30,
+  "not_in_ledger": 0,
+  "not_delivered": 0,
+  "within_deadline": 30,
+  "deadline_ms": 5000,
+  "deadline_misses": 0,
+  "p50_ms": 712,
+  "p95_ms": 1542,
+  "max_ms": 1700,
+  "clock_offset_ms": -654
+}
+PASS: baseline: 0 critical alerts lost (30 of 30 delivered)
+PASS: baseline: p95 from emission = 1542 ms (deadline 5000 ms), 0 alert(s) over the deadline
+ALL CHECKS PASSED
+>>> restoring the aggregator's sensor URL (http://sensor-pantai:8080) and removing the fake sensor
+# exit code: 0

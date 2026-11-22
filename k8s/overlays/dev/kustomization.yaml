@@ -1,0 +1,14 @@
+# Local smoke test on kind (shared-kernel nodes): NOT valid for the M2 demo.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: sistem-informasi-kebencanaan-bnpb
+resources:
+  - ../../base
+  - ../../sensor
+images:
+  - {name: bnpb/aggregator, newTag: dev}
+  - {name: bnpb/client-api, newTag: dev}
+  - {name: bnpb/auth-service, newTag: dev}
+  - {name: bnpb/consumers, newTag: dev}
+  - {name: bnpb/mock-bmkg, newTag: dev}
+  - {name: bnpb/mock-pvmbg, newTag: dev}

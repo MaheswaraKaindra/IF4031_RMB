@@ -1,0 +1,76 @@
+\section{Deskripsi Umum Sistem}
+
+\subsection{Gambaran Umum Sistem}
+
+Gateway Koordinasi Kebencanaan BNPB pada Milestone 2 melanjutkan sistem terintegrasi dari Milestone 1 ke arsitektur terdistribusi yang skalabel di atas Kubernetes (\textit{k3s}). Sistem berjalan pada klaster tiga mesin virtual (\textit{virtual machine}) dengan kernel terpisah agar tahan terhadap kehilangan \textit{node}, lonjakan beban tinggi, serta kegagalan komponen hilir maupun hulu. Seluruh proses aplikasi juga dilengkapi deklarasi kebutuhan memori dan CPU sesuai Lampiran B agar penggunaan sumber daya tetap terukur.
+
+Aggregator kini menghimpun peristiwa kebencanaan dari lima jalur sumber berbeda. Dua sumber berasal dari sistem lama, yaitu BMKG untuk kejadian gempa bumi (\texttt{SEISMIC}) dan PVMBG untuk aktivitas gunung api (\texttt{VOLCANIC}). Tiga jalur baru pada Milestone 2 mencakup aliran \textit{Server-Sent Events} (SSE) satelit (\texttt{SATELIT} $\to$ \texttt{WILDFIRE}), sensor pantai eksternal (\texttt{SENSOR\_PANTAI} $\to$ \texttt{COASTAL}), serta laporan aktif dari lapangan (\texttt{FIELD\_REPORT}).
+
+Data bencana yang lolos validasi disimpan secara \textit{idempotent} ke penyimpanan terdistribusi \textit{MongoDB Sharded Cluster} sebagai sumber kebenaran tunggal. Di sisi distribusi asinkron, pesan disalurkan melalui klaster RabbitMQ tiga \textit{node} ke layanan \textit{consumer} dasbor, portal informasi, serta pengirim peringatan tim lapangan. Layanan publik dilayani melalui \texttt{client-api} dengan autentikasi JWT \texttt{RS256} dari \texttt{auth-service} serta pembatasan akses berbasis peran (\texttt{media}, \texttt{field-team}, dan \texttt{bnpb-ops}).
+
+Untuk menjamin transparansi operasi saat pengujian maupun insiden, sistem menambahkan Audit API pada jalur internal Aggregator dan dasbor analitik \path{/analytics}. Tiga pilar observabilitas turut dipasang secara terpadu memakai Prometheus untuk metrik, Grafana untuk visualisasi dasbor, Jaeger untuk penelusuran jejak terdistribusi (\textit{distributed tracing}), serta log JSON terstruktur ber-\texttt{correlation\_id}.
+
+\subsection{Lingkup Milestone 2}
+
+Pengerjaan Milestone 2 mencakup peningkatan platform, penyimpanan, koordinasi, integrasi sumber baru, serta pembuktian ketahanan untuk lima \textit{problem set}:
+
+\begin{enumerate}
+  \item \textbf{Migrasi platform dan penyimpanan terdistribusi (Problem 1):} seluruh komponen dipindahkan ke Kubernetes multi-\textit{node} dengan satu perintah \textit{deploy} (\path{scripts/m2/deploy.sh} \texttt{demo}). Penyimpanan kanonik ditingkatkan menjadi \textit{MongoDB Sharded Cluster} berkapasitas terbagi di tiga VM, lengkap bersama Audit API dan dasbor analitik lintas \textit{shard}.
+  \item \textbf{Skalabilitas horizontal dan koordinasi pemimpin (Problem 2):} layanan Aggregator dijalankan minimal tiga replika lintas \textit{node} yang seluruhnya melayani permintaan baca. Pengambilan data per sumber dikendalikan oleh satu pemegang \textit{lease} Kubernetes disertai \textit{monotonic epoch fencing} dan dukungan \textit{zero-downtime rolling update}.
+  \item \textbf{Evolusi skema, karantina, dan penerimaan asinkron (Problem 3):} sistem memisahkan perubahan skema aditif dari perubahan yang merusak kontrak. Pesan gagal maupun \textit{payload} rusak diarsipkan ke \path{raw_inbox} untuk \textit{ordered replay} oleh \texttt{bnpb-ops}, sedangkan \path{POST /field-reports} diamankan oleh \textit{atomic outbox} dan antrean kritis terpisah.
+  \item \textbf{Pemrosesan aliran satelit berbasis \textit{event time} (Problem 4):} konsumsi \textit{stream} SSE satelit dipisahkan melalui log persisten \path{satellite_feed_log}. Pengklasteran kebakaran berjalan di atas \textit{event-time watermark} dengan toleransi data terlambat, dukungan pembaruan atau pencabutan deteksi, serta pemulihan penuh via \textit{replay}.
+  \item \textbf{Ketahanan dependensi eksternal dan prioritas lalu lintas (Problem 5):} konsumsi \texttt{SENSOR\_PANTAI} dilindungi oleh validasi kontrak, \textit{bulkhead}, \textit{circuit breaker}, deteksi kesegaran semantik, serta jalur peringatan kritis dengan \textit{delivery ledger}. Di gerbang masuk, \texttt{client-api} mempartisi kapasitas untuk menjaga akses Tim Lapangan di tengah banjir trafik Media.
+  \item \textbf{Observabilitas terpadu dan kesiapan uji lapangan:} seluruh layanan mengekspor metrik ke Prometheus dan Grafana, memancarkan \textit{span} OpenTelemetry ke Jaeger, serta memasang \textit{Tester Agent} tanpa modifikasi \textit{image} di klaster.
+\end{enumerate}
+
+\subsection{Perubahan dari Milestone 1}
+
+Seluruh prinsip dasar Milestone 1 dibawa ulang ke Milestone 2, lalu disesuaikan dengan skala multi-\textit{node} dan sumber data baru. \textbf{Tabel~\ref{tab:m1-m2-changes}} merangkum keputusan yang diubah, ditambahkan, maupun tetap dipertahankan beserta alasannya.
+
+\begin{small}
+\begin{longtable}{@{} >{\raggedright\arraybackslash}p{3.2cm} >{\raggedright\arraybackslash}p{2.3cm} >{\raggedright\arraybackslash}p{4.3cm} >{\raggedright\arraybackslash}p{4.8cm} @{}}
+  \caption{Ringkasan Perubahan Keputusan Desain dari Milestone 1 ke Milestone 2}
+  \label{tab:m1-m2-changes} \\
+  \toprule
+  \textbf{Aspek / Komponen} & \textbf{Status} & \textbf{Keputusan di Milestone 2} & \textbf{Alasan Perubahan atau Dipertahankan} \\
+  \midrule
+  \endfirsthead
+  \caption[]{Ringkasan Perubahan Keputusan Desain dari Milestone 1 ke Milestone 2 (Lanjutan)} \\
+  \toprule
+  \textbf{Aspek / Komponen} & \textbf{Status} & \textbf{Keputusan di Milestone 2} & \textbf{Alasan Perubahan atau Dipertahankan} \\
+  \midrule
+  \endhead
+  \midrule
+  \multicolumn{4}{r}{\textit{Bersambung ke halaman berikutnya...}} \\
+  \endfoot
+  \bottomrule
+  \endlastfoot
+  Platform Eksekusi & Diubah & Bermigrasi dari \textit{Docker Compose} satu mesin ke klaster Kubernetes (\textit{k3s}) tiga VM. & Memenuhi pengujian kegagalan \textit{node} fisik terpisah, penskalaan replika, dan batas sumber daya baku. \\
+  \midrule
+  Penyimpanan Kanonik & Diubah & Beralih dari satu instans MongoDB ke \textit{MongoDB Sharded Cluster} tiga \textit{shard} berotasi. & Mencegah satu \textit{node} memegang 100\% dataset sekaligus menjaga ketersediaan saat satu \textit{node} hilang permanen. \\
+  \midrule
+  Koordinasi Aggregator & Diubah & Diskalakan dari satu instans menjadi $\ge 3$ replika dengan \textit{Kubernetes Lease} dan \textit{epoch fencing}. & Melayani beban baca lebih tinggi sambil memastikan setiap sumber hulu hanya diambil oleh satu pemimpin aktif. \\
+  \midrule
+  \textit{Broker} Pesan & Diubah & Ditingkatkan dari satu kontainer RabbitMQ menjadi klaster tiga \textit{node} dengan \textit{quorum queue}. & Mencegah pesan peringatan kritis hilang apabila salah satu VM maupun \textit{pod broker} mati mendadak. \\
+  \midrule
+  Konsumsi Satelit & Diubah & Meninggalkan \textit{periodic polling} demi klien SSE persisten (\path{satellite_feed_log}). & Menangkap aliran kontinu berkecepatan hingga $60\times$ tanpa kehilangan \textit{offset} saat koneksi terputus. \\
+  \midrule
+  Kepemilikan Penyimpanan & Dipertahankan & Tetap satu layanan pemilik per basis data, diperketat oleh \texttt{NetworkPolicy} dan akun minimal. & Mencegah ketergantungan tersembunyi antarlayanan di tingkat platform secara teknis. \\
+  \midrule
+  Autentikasi Klien & Dipertahankan (Catatan Teknis) & Tetap memakai JWT \texttt{RS256} di \texttt{auth-service} dengan penyimpanan \textit{refresh token} lokal per replika. & Verifikasi tanpa sesi menjaga kinerja gerbang, sedangkan klien menyegarkan ulang lewat \path{/token} jika replika autentikasi berganti. \\
+  \midrule
+  Pola Observabilitas & Diperluas & Log \texttt{correlation\_id} dilengkapi metrik Prometheus, dasbor Grafana, Jaeger, dan Audit API. & Kegagalan majemuk antar-\textit{node} tidak cukup dilacak lewat log lokal saja tanpa korelasi metrik dan jejak waktu. \\
+\end{longtable}
+\end{small}
+
+\subsection{Asumsi}
+
+Perancangan dan implementasi sistem pada Milestone 2 didasarkan pada beberapa asumsi operasional berikut:
+
+\begin{enumerate}
+  \item \textbf{Domain kegagalan independen antar-VM:} ketiga VM (\texttt{node-a}, \texttt{node-c}, dan \texttt{node-d}) memiliki kernel dan penyimpanan lokal terpisah. Meski berjalan di satu host fisik untuk keperluan demo, kegagalan diuji pada level satu VM dalam satu waktu.
+  \item \textbf{Kapasitas mesin uji \textit{load testing}:} pembangkit beban seperti \texttt{k6} dijalankan di luar \textit{pod} aplikasi agar tidak memakan kuota CPU serta memori kontainer yang sedang diukur. Kinerja VM di atas virtualisasi jaringan \textit{flannel VXLAN} juga menjadi batas fisik pengujian skala tinggi.
+  \item \textbf{Ketentuan integrasi \textit{image} resmi:} \textit{image} \path{sensor-pantai} dan \path{tester-agent} berjalan persis sesuai \textit{digest} asisten tanpa modifikasi kode maupun pembatasan \texttt{NetworkPolicy} yang menghalangi tugas pengujiannya.
+  \item \textbf{Pengakuan \textit{degraded write} saat pemulihan:} selama satu \textit{node} penyimpanan mati dan belum diganti, sistem mengasumsikan ketersediaan tulis sementara (\texttt{w: 1} atau status \texttt{degraded: true}) lebih diprioritaskan daripada menghentikan seluruh pencatatan bencana.
+  \item \textbf{Jaminan pengenal \textit{idempotency} klien:} klien pengirim \path{POST /field-reports} diasumsikan menyertakan \textit{header} \texttt{Idempotency-Key} yang konsisten saat mengulang permintaan akibat gangguan jaringan.
+\end{enumerate}

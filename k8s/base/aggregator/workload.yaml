@@ -1,0 +1,143 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aggregator
+  labels: {app.kubernetes.io/name: aggregator, role: aggregator}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: aggregator-lease-role
+  labels: {app.kubernetes.io/name: aggregator, role: aggregator}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: aggregator-lease-binding
+  labels: {app.kubernetes.io/name: aggregator, role: aggregator}
+subjects:
+  - kind: ServiceAccount
+    name: aggregator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: aggregator-lease-role
+---
+# Secret aggregator-secret (X_BMKG_KEY, PVMBG_TOKEN, MONGO_URI, RABBITMQ_URL) is created by
+# scripts/m2/create-secrets.sh.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aggregator
+  labels: {app.kubernetes.io/name: aggregator, role: aggregator}
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels: {app.kubernetes.io/name: aggregator}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: aggregator, role: aggregator}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+    spec:
+      serviceAccountName: aggregator
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: aggregator}
+      # The aggregator exits(1) if its first Mongo connect fails (index.ts), which would crash-loop with a growing
+      # backoff on a cold cluster.
+      initContainers:
+        - name: wait-for-deps
+          image: docker.io/library/busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "until nc -z mongo 27017 && nc -z rabbitmq 5672; do echo waiting for mongo/rabbitmq; sleep 2; done"]
+          resources:
+            requests: {memory: 256Mi}
+            limits: {memory: 512Mi}
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1000}
+      containers:
+        - name: aggregator
+          image: bnpb/aggregator
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 3000}    # M1/M2 internal API (unauthenticated): client-api only
+            - {name: audit, containerPort: 3001}   # Audit API + analytics (token-protected): the only published entry
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: PANTAI_AUTH_TOKEN
+              valueFrom: {secretKeyRef: {name: pantai-token, key: token, optional: true}}
+          envFrom:
+            - configMapRef: {name: aggregator-config}
+            - secretRef: {name: aggregator-secret}
+          resources:
+            requests: {memory: 256Mi, cpu: 200m}
+            limits: {memory: 512Mi}
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1000}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 2
+            failureThreshold: 60
+          # /health returns 503 when Mongo is unreachable or draining: that must drain traffic, not restart the pod.
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aggregator
+  labels: {app.kubernetes.io/name: aggregator, role: aggregator}
+spec:
+  selector: {app.kubernetes.io/name: aggregator}
+  ports: [{name: http, port: 3000, targetPort: http}]
+---
+# Receipt acknowledgements from the Tim Lapangan receiver. Reaches the pods even while readiness fails (store outage), so the
+# receiver does not lose its target for the seconds a probe needs to pass again. The endpoint itself answers 503 until its store is back.
+apiVersion: v1
+kind: Service
+metadata:
+  name: aggregator-ack
+  labels: {app.kubernetes.io/name: aggregator, role: aggregator}
+spec:
+  publishNotReadyAddresses: true
+  selector: {app.kubernetes.io/name: aggregator}
+  ports: [{name: http, port: 3000, targetPort: http}]
+---
+# Token-protected Audit/analytics API (Appendix A). The load balancer / NodePort entry points here, never at :3000.
+apiVersion: v1
+kind: Service
+metadata:
+  name: aggregator-audit
+  labels: {app.kubernetes.io/name: aggregator, role: aggregator}
+spec:
+  selector: {app.kubernetes.io/name: aggregator}
+  ports: [{name: audit, port: 3001, targetPort: audit}]
