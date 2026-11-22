@@ -1,0 +1,21 @@
+# proof: 4.8
+# date: 2026-11-22T15:56:21+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p4-reconnect.sh
+# artificial case: the connection is cut with a firewall rule on the leader's node
+
+leader aggregator-6f489f694d-cwshw on node-c (pod IP 10.42.2.130), feed host 104.21.84.171,172.67.195.83, committed offset before the cut: 1980808
+>>> feed connection cut at 08:56:26
+>>> connection allowed again at 08:56:48; during the cut the committed offset was 1980918
+PASS: caught up with the feed 25 s after the cut began (lag -5 frames)
+PASS: same pod, no restart, no change of leader: only the connection was lost
+PASS: committed offset moved forward only (1980808 -> 1980930)
+frames stored: 1980952, lowest offset 0, highest 1980951
+PASS: feed log contiguous after the reconnect: 1980952 frames for offsets 0..1980951, none lost, none stored twice
+log lines about the stream during the test:
+{"level":"warn","time":"2026-11-22T08:56:26.579Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"terminated","msg":"satellite stream interrupted"}
+{"level":"warn","time":"2026-11-22T08:56:27.109Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","msg":"satellite stream interrupted"}
+{"level":"warn","time":"2026-11-22T08:56:27.242Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","msg":"satellite stream interrupted"}
+{"level":"warn","time":"2026-11-22T08:56:29.703Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","msg":"satellite stream interrupted"}
+ALL CHECKS PASSED
+# exit code: 0

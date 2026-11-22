@@ -1,5 +1,5 @@
 # Idempotent cluster bootstrap: replica sets, addShard, hashed-_id sharding, users, default write concern.
-# Jobs are immutable: scripts/deploy.sh deletes the previous Job before applying.
+# Jobs are immutable: scripts/m2/deploy.sh deletes the previous Job before applying.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -14,8 +14,8 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: init
-          image: docker.io/library/mongo:7
-          command: ["mongosh", "--nodb", "--quiet", "--file", "/scripts/init.js"]
+          image: docker.io/library/mongo:4.4
+          command: ["mongo", "--nodb", "--quiet", "/scripts/init.js"]
           env:
             - name: POD_NAMESPACE
               valueFrom: {fieldRef: {fieldPath: metadata.namespace}}

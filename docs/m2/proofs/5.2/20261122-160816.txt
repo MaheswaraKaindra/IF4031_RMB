@@ -1,0 +1,19 @@
+# proof: 5.2
+# date: 2026-11-22T16:08:16+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p5-quarantine.sh
+# artificial case: none
+
+before: 0 quarantined sensor messages, 67175 SENSOR_PANTAI events
+>>> 5 contract-breaking items injected, waiting 30s
+  no id  reason: out_of_range:wave_height_m  status: parked
+  no id  reason: missing_field:observed_at  status: parked
+  no id  reason: missing_field:critical  status: parked
+  no id  reason: missing_field:critical  status: parked
+  no id  reason: missing_field:critical  status: parked
+PASS: contract-breaking items were set aside with their reason (5 listed, was 0)
+SENSOR_PANTAI events: before 67175, after 67175 (valid items keep arriving; none of the bad ids may be among them)
+PASS: none of the 5 bad items was stored as a HazardEvent
+ALL CHECKS PASSED
+>>> restoring the aggregator's sensor URL (http://sensor-pantai:8080) and removing the fake sensor
+# exit code: 0

@@ -1,0 +1,37 @@
+# proof: 1.1
+# date: 2026-11-22T11:02:10+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p1-report.sh
+# artificial case: none
+
+{"logical_records":155322,"per_node_copies":{"node-a":103494,"node-d":103477,"node-c":103587},"max_node_share":0.667}
+{"unit":"shard-1","node":"node-a","member":"mongo-s1-a","role":"primary","count":51691,"inserts":219238,"updates":1770}
+{"unit":"shard-1","node":"node-d","member":"mongo-s1-b","role":"secondary","count":51690,"inserts":12390,"updates":115}
+{"unit":"shard-2","node":"node-d","member":"mongo-s2-a","role":"primary","count":51787,"inserts":0,"updates":1631}
+{"unit":"shard-2","node":"node-c","member":"mongo-s2-b","role":"secondary","count":51786,"inserts":0,"updates":100}
+{"unit":"shard-3","node":"node-c","member":"mongo-s3-a","role":"primary","count":51801,"inserts":0,"updates":1766}
+{"unit":"shard-3","node":"node-a","member":"mongo-s3-b","role":"secondary","count":51803,"inserts":0,"updates":100}
+{"source":"BMKG","count":55206,"checksum":"420a24779c3dedd45d9ad5b7b361f2268d76e4fe63f7987913d6b2d4ad7cd274","algorithm":"sha256","as_of":"2026-11-22T04:02:22.184Z","partial":false,"unavailable_units":[]}
+{"source":"PVMBG","count":5199,"checksum":"d0bd03f68f0835ece93ec9f8dbf093ecdc8da962f2395f29681c70c89b3fd870","algorithm":"sha256","as_of":"2026-11-22T04:02:22.387Z","partial":false,"unavailable_units":[]}
+{"source":"SATELIT","count":27764,"checksum":"c7bb99edf87f9b35a47052640717378f6cf1c3e8ec71e2ee24c41639cd3c54cb","algorithm":"sha256","as_of":"2026-11-22T04:02:24.564Z","partial":false,"unavailable_units":[]}
+{"source":"SENSOR_PANTAI","count":65439,"checksum":"ce64034a938b803a6e50f52271909a5145b6eb5794eceefe69575f5f6590b4cd","algorithm":"sha256","as_of":"2026-11-22T04:02:27.528Z","partial":false,"unavailable_units":[]}
+>>> /internal/audit/location for hz-e0c16c162e4c233b
+{
+  "hazard_id": "hz-e0c16c162e4c233b",
+  "locations": [
+    {
+      "node": "node-c",
+      "unit": "shard-3",
+      "role": "primary"
+    },
+    {
+      "node": "node-a",
+      "unit": "shard-3",
+      "role": "replica"
+    }
+  ],
+  "partial": false
+}
+>>> store units
+{"units":[{"unit":"shard-1","available":true,"redundant":true},{"unit":"shard-2","available":true,"redundant":true},{"unit":"shard-3","available":true,"redundant":true}]}
+# exit code: 0

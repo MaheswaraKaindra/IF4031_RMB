@@ -1,5 +1,5 @@
 # Secret auth-service-secret (JWT_PRIVATE_KEY_B64, AUTH_CLIENT_*_SECRET_SHA256) is created by
-# scripts/k8s/create-secrets.sh. More than one replica needs the Service's ClientIP affinity below (the demo overlay runs 2).
+# scripts/m2/create-secrets.sh. More than one replica needs the Service's ClientIP affinity below (the demo overlay runs 2).
 apiVersion: apps/v1
 kind: Deployment
 metadata:

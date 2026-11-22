@@ -1,5 +1,5 @@
 # Single-node MongoDB for the dev overlay only (M1 behaviour). The demo overlay deletes it and uses the sharded store in k8s/store.
-# Secret mongo-secret (MONGO_INITDB_ROOT_USERNAME/PASSWORD) comes from scripts/k8s/create-secrets.sh.
+# Secret mongo-secret (MONGO_INITDB_ROOT_USERNAME/PASSWORD) comes from scripts/m2/create-secrets.sh.
 # Data lives on the node-local default StorageClass (k3s local-path / kind standard), never network storage.
 apiVersion: apps/v1
 kind: StatefulSet

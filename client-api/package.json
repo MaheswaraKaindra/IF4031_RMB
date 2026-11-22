@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test": "find src -name '*.test.ts' -print0 | xargs -0 node --import tsx --test"
   },
   "keywords": [],
   "author": "",

@@ -10,3 +10,4 @@ configMapGenerator:
       - PVMBG_DELAY_MAX_MS=3000
       - PVMBG_REPORT_INTERVAL_MS=10000
       - LOG_LEVEL=info
+      - ADMIN_OPEN=1

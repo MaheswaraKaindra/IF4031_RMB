@@ -1,0 +1,16 @@
+# proof: 2.7
+# date: 2026-11-22T13:36:13+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p2-throughput-capped.sh
+# artificial case: every aggregator pod is limited to 250m CPU for this test; without the cap the host CPU is the bottleneck and the ratio is about 0.9x
+
+>>> ARTIFICIAL: every aggregator pod is limited to 250m CPU for this test
+>>> 40 closed-loop virtual users, 45s per phase
+     1 instance(s): 8.1 successful req/s, failed requests 58.1%, p95 2091 ms
+     3 instance(s): 42.8 successful req/s, failed requests 1.1%, p95 1035 ms
+     ratio 3 instances / 1 instance = 5.28x (failed: 58% with 1, 1% with 3)
+PASS: with a CPU limit of 250m per pod, 3 instances give 5.28x the successful throughput of 1 (>= 2.0x)
+ALL CHECKS PASSED
+>>> CPU cap removed
+>>> HPA restored
+# exit code: 0

@@ -1,5 +1,5 @@
 # Trace backend. In-memory storage with a trace cap so the 256Mi limit holds; traces are lost on restart (acceptable
-# for the demo, the evidence is captured live). Services export OTLP to http://jaeger:4318 (docs/observability.md).
+# for the demo, the evidence is captured live). Services export OTLP to http://jaeger:4318 (docs/m2/observability.md).
 apiVersion: apps/v1
 kind: Deployment
 metadata:

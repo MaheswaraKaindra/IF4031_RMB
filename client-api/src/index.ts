@@ -3,9 +3,10 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { auth } from './middleware/auth.js';
 import { correlationId, getLog } from './middleware/correlationId.js';
+import { PriorityAdmission, priorityAdmission } from './middleware/admission.js';
 import { inFlightLimit } from './middleware/inFlightLimit.js';
 import { requestLogger } from './middleware/requestLogger.js';
-import { observabilityMiddleware, renderMetrics } from './observability.js';
+import { incCounter, observabilityMiddleware, renderMetrics } from './observability.js';
 import { eventsRouter } from './routes/events.js';
 import { fieldReportsRouter } from './routes/fieldReports.js';
 import { unprocessedRouter } from './routes/unprocessed.js';
@@ -17,7 +18,13 @@ let shuttingDown = false;
 app.use(observabilityMiddleware('client-api'));
 app.use(correlationId);
 app.use(requestLogger);
-app.use(inFlightLimit(config.maxInFlight));
+// Pre-auth safety valve only. The per-class partition below decides who is served under overload.
+app.use(inFlightLimit(config.hardCapInFlight));
+const admission = new PriorityAdmission({ total: config.maxInFlight, reservedFieldTeam: config.reservedFieldTeam, mediaMax: config.mediaMaxInFlight });
+const admit = priorityAdmission(admission, {
+    onAdmit: (cls) => incCounter('client_api_admission_total', { client_class: cls, outcome: 'admitted' }),
+    onReject: (cls) => incCounter('client_api_admission_total', { client_class: cls, outcome: 'rejected' }),
+});
 
 app.get('/metrics', (_req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
@@ -32,9 +39,9 @@ app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok', service: 'client-api' });
 });
 
-app.use('/events', auth, eventsRouter);
-app.use('/field-reports', express.json({ limit: '256kb' }), auth, fieldReportsRouter);
-app.use('/unprocessed', express.json({ limit: '64kb' }), auth, unprocessedRouter);
+app.use('/events', auth, admit, eventsRouter);
+app.use('/field-reports', express.json({ limit: '256kb' }), auth, admit, fieldReportsRouter);
+app.use('/unprocessed', express.json({ limit: '64kb' }), auth, admit, unprocessedRouter);
 
 app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' });

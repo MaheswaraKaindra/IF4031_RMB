@@ -15,7 +15,7 @@ function fmtLabels(labels: Record<string, string>): string {
 const counters = new Map<string, { name: string; labels: Record<string, string>; value: number }>();
 const histograms = new Map<string, { name: string; labels: Record<string, string>; counts: number[]; sum: number; count: number }>();
 
-function incCounter(name: string, labels: Record<string, string>): void {
+export function incCounter(name: string, labels: Record<string, string>): void {
     const key = `${name}${fmtLabels(labels)}`;
     const cur = counters.get(key);
     if (cur) cur.value += 1;

@@ -1,0 +1,38 @@
+# proof: 2.6
+# date: 2026-11-22T13:25:33+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p2-load-10k.sh
+# artificial case: a light asynchronous generator holds 10,000 users (k6 cannot here), about 71 req/s in total; 2.8 (rolling update under load) is in the same run
+
+>>> 10000 virtual users, think time 140s (about 71 req/s once all are active), 340s in total
+t=170s: scale 3 -> 5
+t=215s: scale 5 -> 2
+t=260s: rolling update (new revision)
+t=305s: scale back to 3
+{
+  "virtual_users": 10000,
+  "max_concurrent_users": 10000,
+  "duration_s": 340,
+  "think_s": 140,
+  "requests": 24927,
+  "ok_200": 24926,
+  "controlled_429": 0,
+  "errors": 1,
+  "error_rate_outside_429": 0.00004,
+  "error_kinds": {
+    "503": 1
+  },
+  "latency_ms": {
+    "p50": 44,
+    "p95": 254,
+    "p99": 840,
+    "max": 2228
+  }
+}
+seconds that had errors (second since start, count): [{"s":282,"err":1}]
+PASS: 10000 virtual users active, all of them for the last 200s (>= 120 s)
+PASS: error rate outside controlled 429 rejections is 0.00004 (< 0.01) while scaling 3->5->2->3 and rolling
+PASS: criterion 2 still holds after the load (no duplicates, one caller)
+ALL CHECKS PASSED
+>>> HPA restored
+# exit code: 0

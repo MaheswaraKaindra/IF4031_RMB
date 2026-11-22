@@ -1,0 +1,43 @@
+# proof: 5.4
+# date: 2026-11-22T16:21:18+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p5-checks.sh
+# artificial case: none
+
+>>> baseline (fake sensor in normal mode), 40s
+     sensor requests in 40s: 38
+PASS: the aggregator polls the (fake) sensor in normal mode (38 requests)
+     SEISMIC p95: 144 ms
+>>> mode: slow
+PASS: slow: other sources keep M1 latency (SEISMIC p95 57 ms < 300 ms, 0 failures)
+PASS: slow: a request depending on the sensor was answered fast (max 44 ms, status 200)
+PASS: slow: requests to the sensor did not spike (8 in 40s, baseline 38, limit 60)
+PASS: slow: the system used the sensor again by itself after ~1s, no intervention
+>>> mode: blackhole
+PASS: blackhole: other sources keep M1 latency (SEISMIC p95 47 ms < 300 ms, 0 failures)
+PASS: blackhole: a request depending on the sensor was answered fast (max 46 ms, status 200)
+PASS: blackhole: requests to the sensor did not spike (8 in 40s, baseline 38, limit 60)
+PASS: blackhole: the system used the sensor again by itself after ~2s, no intervention
+>>> mode: status
+PASS: status: other sources keep M1 latency (SEISMIC p95 48 ms < 300 ms, 0 failures)
+PASS: status: a request depending on the sensor was answered fast (max 51 ms, status 200)
+PASS: status: requests to the sensor did not spike (7 in 40s, baseline 38, limit 60)
+PASS: status: the system used the sensor again by itself after ~4s, no intervention
+>>> mode: malformed
+PASS: malformed: other sources keep M1 latency (SEISMIC p95 53 ms < 300 ms, 0 failures)
+PASS: malformed: a request depending on the sensor was answered fast (max 49 ms, status 200)
+PASS: malformed: requests to the sensor did not spike (8 in 40s, baseline 38, limit 60)
+PASS: malformed: the system used the sensor again by itself after ~3s, no intervention
+>>> mode: stale
+PASS: stale: other sources keep M1 latency (SEISMIC p95 58 ms < 300 ms, 0 failures)
+PASS: stale: a request depending on the sensor was answered fast (max 57 ms, status 200)
+PASS: stale: requests to the sensor did not spike (10 in 40s, baseline 38, limit 60)
+PASS: stale: the system used the sensor again by itself after ~2s, no intervention
+>>> mode: frozen
+PASS: frozen: other sources keep M1 latency (SEISMIC p95 80 ms < 300 ms, 0 failures)
+PASS: frozen: a request depending on the sensor was answered fast (max 59 ms, status 200)
+PASS: frozen: requests to the sensor did not spike (12 in 40s, baseline 38, limit 60)
+PASS: frozen: the system used the sensor again by itself after ~1s, no intervention
+ALL CHECKS PASSED
+>>> restoring the aggregator's sensor URL (http://sensor-pantai:8080) and removing the fake sensor
+# exit code: 0

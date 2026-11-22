@@ -1,0 +1,35 @@
+# proof: 4.7
+# date: 2026-11-22T15:41:10+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: bash /home/nathanieljr/repos-wsl/IF4031_RMB/scripts/m2/proof.sh _live
+# artificial case: none
+
+satellite leader: aggregator-6f489f694d-cwshw
+--- 08:41:10
+satellite_fires_written_total{op="upsert"} 2310
+satellite_fires_written_total{op="remove"} 219
+satellite_source_latest_offset 1974189
+satellite_source_offset_lag 0
+satellite_feed_speed 60
+satellite_committed_offset 1974207
+satellite_active_fires 121
+satellite_late_detections 0
+--- 08:42:09
+satellite_fires_written_total{op="upsert"} 2510
+satellite_fires_written_total{op="remove"} 233
+satellite_source_latest_offset 1974496
+satellite_source_offset_lag 0
+satellite_feed_speed 60
+satellite_committed_offset 1974500
+satellite_active_fires 126
+satellite_late_detections 0
+--- 08:43:07
+satellite_fires_written_total{op="upsert"} 2813
+satellite_fires_written_total{op="remove"} 286
+satellite_source_latest_offset 1975751
+satellite_source_offset_lag 0
+satellite_feed_speed 60
+satellite_committed_offset 1975767
+satellite_active_fires 122
+satellite_late_detections 0
+# exit code: 0

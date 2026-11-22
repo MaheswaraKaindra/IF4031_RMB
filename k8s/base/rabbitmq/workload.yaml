@@ -1,27 +1,64 @@
-# Single RabbitMQ node (M1 behaviour). Broker HA/clustering is Owner B's P3 decision.
-# Secret rabbitmq-secret (RABBITMQ_DEFAULT_USER/PASS) comes from scripts/k8s/create-secrets.sh.
+# Three-node RabbitMQ cluster (classic_config peer discovery through the headless Service). Critical alerts use a
+# quorum queue, so restarting or losing one pod does not stop publishing or delivery.
+# Secret rabbitmq-secret (RABBITMQ_DEFAULT_USER/PASS) comes from scripts/m2/create-secrets.sh.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+data:
+  20-cluster.conf: |
+    cluster_formation.peer_discovery_backend = classic_config
+    cluster_formation.classic_config.nodes.1 = rabbit@rabbitmq-0.rabbitmq-headless
+    cluster_formation.classic_config.nodes.2 = rabbit@rabbitmq-1.rabbitmq-headless
+    cluster_formation.classic_config.nodes.3 = rabbit@rabbitmq-2.rabbitmq-headless
+    cluster_partition_handling = pause_minority
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rabbitmq
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: rabbitmq}
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: rabbitmq
   labels: {app.kubernetes.io/name: rabbitmq, role: broker}
 spec:
-  serviceName: rabbitmq
-  replicas: 1
+  serviceName: rabbitmq-headless
+  replicas: 3
   selector:
     matchLabels: {app.kubernetes.io/name: rabbitmq}
   template:
     metadata:
       labels: {app.kubernetes.io/name: rabbitmq, role: broker}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "15692"   # rabbitmq_prometheus plugin (enabled in the image)
     spec:
-      # A fresh volume is root-owned: without this the first start cannot write .erlang.cookie and restarts once.
-      securityContext: {fsGroup: 101}   # rabbitmq user in the -alpine image is uid 100 / gid 101
+      # A fresh volume is root-owned: without fsGroup the first start cannot write .erlang.cookie. OnRootMismatch keeps the
+      # kubelet from re-applying group-write to the existing cookie on every restart (RabbitMQ refuses a cookie that is
+      # not owner-only, so a restart or a node reboot would otherwise crash-loop the broker).
+      securityContext: {fsGroup: 101, fsGroupChangePolicy: OnRootMismatch}   # rabbitmq in the -alpine image is uid 100 / gid 101
+      volumes:
+        - name: config
+          configMap: {name: rabbitmq-config}
       containers:
         - name: rabbitmq
           image: docker.io/library/rabbitmq:4-management-alpine
           ports:
             - {name: amqp, containerPort: 5672}
             - {name: management, containerPort: 15672}
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - {name: RABBITMQ_USE_LONGNAME, value: "true"}
+            - name: RABBITMQ_NODENAME
+              value: rabbit@$(POD_NAME).rabbitmq-headless
+            - {name: RABBITMQ_ERLANG_COOKIE, value: bnpb-rabbitmq-cluster-cookie}
           envFrom:
             - secretRef: {name: rabbitmq-secret}
           resources:
@@ -29,6 +66,7 @@ spec:
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /var/lib/rabbitmq}
+            - {name: config, mountPath: /etc/rabbitmq/conf.d/20-cluster.conf, subPath: 20-cluster.conf, readOnly: true}
           startupProbe:
             exec: {command: [rabbitmq-diagnostics, -q, ping]}
             periodSeconds: 5
@@ -60,3 +98,16 @@ spec:
   ports:
     - {name: amqp, port: 5672, targetPort: amqp}
     - {name: management, port: 15672, targetPort: management}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-headless
+  labels: {app.kubernetes.io/name: rabbitmq, role: broker}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app.kubernetes.io/name: rabbitmq}
+  ports:
+    - {name: epmd, port: 4369}
+    - {name: dist, port: 25672}

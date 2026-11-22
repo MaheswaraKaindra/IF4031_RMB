@@ -1,6 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Opt-in component, included by overlays/demo. Apps must expose /metrics and OTLP spans: see docs/observability.md.
+# Opt-in component, included by overlays/demo. Apps must expose /metrics and OTLP spans: see docs/m2/observability.md.
 resources:
   - prometheus.yaml
   - jaeger.yaml
@@ -11,5 +11,8 @@ configMapGenerator:
   - name: grafana-dashboards
     files:
       - dashboards/bnpb-overview.json
+      - dashboards/satellite.json
+      - dashboards/coastal.json
+      - dashboards/platform.json
 generatorOptions:
   disableNameSuffixHash: true

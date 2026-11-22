@@ -1,5 +1,6 @@
 import { MongoClient, MongoWriteConcernError, type Collection, type Document, type Filter } from 'mongodb';
 import { logger } from '../logger.js';
+import { isStoreDegraded, setStoreDegraded } from './health.js';
 import { AnalyticsAccumulator } from './analytics.js';
 import { decodeCursor, encodeCursor } from './cursor.js';
 import { hazardIdFor } from './identity.js';
@@ -24,6 +25,9 @@ export interface MongoRepositoryOptions {
     strictWrites?: boolean;         // true: a write-concern timeout is an UNKNOWN outcome (fail closed) instead of a degraded ack
     writeW?: number | 'majority';   // sharded layout: 2 (2 data members + arbiter; majority cannot be acked with one member down)
     writeTimeoutMs?: number;
+    // Who stamps ingested_at on first insert. 'store' (default): the database clock, so a skewed aggregator node cannot write
+    // records dated in the future. 'caller': the value in the record (deterministic ordering in tests).
+    ingestedAtSource?: 'store' | 'caller';
 }
 
 const HAZARDS = 'hazards';
@@ -68,7 +72,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         }
     }
 
-    // Node names change when a slot moves to a replacement machine (scripts/k8s/p1-replace-node.sh); member hosts are
+    // Node names change when a slot moves to a replacement machine (scripts/m2/p1-replace-node.sh); member hosts are
     // stable DNS names, so connections and probes are unaffected. Only placement answers (/location, report) change.
     setTopology(t: StoreTopology): void {
         if (this.topology) this.topology = t;
@@ -89,40 +93,44 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         if (eventVersion !== undefined) and.push({ $or: [{ event_version: { $exists: false } }, { event_version: { $lt: eventVersion } }] });
         const filter: Filter<Document> = and.length ? { _id: id as never, $and: and } : { _id: id as never };
 
-        const $set: Document = { ...rest, occurred_at: normalizeIso(event.occurred_at) };
-        if (eventVersion !== undefined) $set['event_version'] = eventVersion;
-        const update: Document = { $set, $setOnInsert: { hazard_id: id, ingested_at } };
-        if (epoch !== undefined) update['$max'] = { fence_epoch: epoch };
+        // Aggregation-pipeline update so the stamp can use the server clock ($$NOW). Every value goes through $literal: in a
+        // pipeline a string starting with '$' would otherwise be read as a field path.
+        const lit = (v: unknown): Document => ({ $literal: v });
+        const stamp: unknown = this.o.ingestedAtSource === 'caller'
+            ? lit(ingested_at)
+            : { $dateToString: { date: '$$NOW', format: '%Y-%m-%dT%H:%M:%S.%LZ', timezone: 'UTC' } };
+        const $set: Document = { hazard_id: lit(id), ingested_at: { $ifNull: ['$ingested_at', stamp] } };
+        for (const [k, v] of Object.entries(rest)) $set[k] = lit(v);
+        $set['occurred_at'] = lit(normalizeIso(event.occurred_at));
+        if (eventVersion !== undefined) $set['event_version'] = lit(eventVersion);
+        if (epoch !== undefined) $set['fence_epoch'] = { $max: [{ $ifNull: ['$fence_epoch', lit(epoch)] }, lit(epoch)] };
+        const update: Document[] = [{ $set }];
 
         try {
             // Fence/version check and write are ONE conditional upsert: if the condition fails on an
             // existing record the upsert tries to insert the same _id and raises E11000 (below).
-            const r = await this.hazards().updateOne(filter, update, { upsert: true, writeConcern: this.writeConcern });
-            return { outcome: r.upsertedCount > 0 || r.modifiedCount > 0 ? 'applied' : 'duplicate', hazard_id: id, created: r.upsertedCount > 0 };
+            // While the store is already known to be degraded a w:2 write can only wait out its whole timeout and then be acknowledged as
+            // degraded anyway. Writing at w:1 right away gives the same outcome without the wait (1.5 s per write, which made the drain of
+            // a backlog after a node loss take tens of seconds). Strict mode keeps waiting: it must fail closed.
+            const quick = !this.o.strictWrites && isStoreDegraded() && this.writeConcern.w !== 1;
+            const r = await this.hazards().updateOne(filter, update, { upsert: true, writeConcern: quick ? { w: 1 } : this.writeConcern });
+            return { outcome: r.upsertedCount > 0 || r.modifiedCount > 0 ? 'applied' : 'duplicate', hazard_id: id, created: r.upsertedCount > 0, ...(quick ? { degraded: true } : {}) };
         } catch (err) {
             if (isDuplicateKey(err)) return this.classifyRejected(id, epoch, eventVersion);
             if (err instanceof MongoWriteConcernError && !this.o.strictWrites) {
                 // wtimeout: the primary applied the write, only the second data member has not confirmed (it is down or
                 // re-syncing). Refusing writes for the whole recovery window would stop ingestion; acknowledge it as
-                // DEGRADED instead: durable on ONE copy until resync (see docs/consistency.md). Callers count/log `degraded`.
-                return { outcome: 'applied', hazard_id: id, created: await this.wasCreatedBy(id, ingested_at), degraded: true, detail: errMsg(err) };
+                // DEGRADED instead: durable on ONE copy until resync (see docs/m2/consistency.md). Callers count/log `degraded`.
+                return { outcome: 'applied', hazard_id: id, created: true, degraded: true, detail: errMsg(err) };
             }
             // Network / server-selection error, or strict mode: the write may or may not have happened.
             return { outcome: 'unavailable', hazard_id: id, detail: errMsg(err) };
         }
     }
 
-    // After a write-concern timeout: was this call the one that inserted the record? Unknown -> true (a duplicate publish is
-    // absorbed by consumer dedup; a missed publish would lose a notification).
-    private async wasCreatedBy(id: string, ingestedAt: string): Promise<boolean> {
-        try {
-            const cur = await this.hazards().findOne({ _id: id as never }, { projection: { ingested_at: 1 }, maxTimeMS: this.deadlineMs, readPreference: 'primary' });
-            return cur?.['ingested_at'] === ingestedAt;
-        } catch {
-            return true;
-        }
-    }
-
+    // After a write-concern timeout it is unknown whether this call inserted the record (the stamp comes from the store, so it
+    // cannot be compared with anything the caller holds): report created. A duplicate publish is absorbed by consumer dedup; a
+    // missed publish would lose a notification.
     private async classifyRejected(id: string, epoch: number | undefined, version: number | undefined): Promise<IngestResult> {
         try {
             const cur = await this.hazards().findOne({ _id: id as never }, { projection: { fence_epoch: 1, event_version: 1 }, maxTimeMS: this.deadlineMs });
@@ -139,7 +147,8 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
             ? { _id: id as never }
             : { _id: id as never, $or: [{ fence_epoch: { $exists: false } }, { fence_epoch: { $lte: epoch } }] };
         try {
-            const r = await this.hazards().deleteOne(filter, { writeConcern: this.writeConcern });
+            const quick = !this.o.strictWrites && isStoreDegraded() && this.writeConcern.w !== 1;
+            const r = await this.hazards().deleteOne(filter, { writeConcern: quick ? { w: 1 } : this.writeConcern });
             if (r.deletedCount > 0) return { outcome: 'applied', hazard_id: id };
             if (epoch !== undefined) {
                 const cur = await this.hazards().findOne({ _id: id as never }, { projection: { fence_epoch: 1 }, maxTimeMS: this.deadlineMs });
@@ -331,13 +340,34 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         return c;
     }
 
+    // A probe client that failed once is discarded: after a member's VM vanished without closing its connections, a long-lived
+    // client kept reporting the whole shard as unreachable for minutes although a fresh connection succeeded at once (only an
+    // aggregator restart cleared it). The next probe connects from scratch.
     private async hello(m: StoreMember): Promise<{ reachable: boolean; primary: boolean; secondary: boolean }> {
         try {
-            const r = await this.memberClient(m, false).db('admin').command({ hello: 1 }, { timeoutMS: this.probeMs });
+            // Hard deadline around the probe: a connection to a VM that vanished without closing it can leave the driver call hanging far
+            // beyond its own timeouts, and one hanging probe would block the whole status round (and with it the degraded flag).
+            let timer: NodeJS.Timeout | undefined;
+            const r = await Promise.race([
+                this.memberClient(m, false).db('admin').command({ hello: 1 }, { timeoutMS: this.probeMs }),
+                new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`probe deadline ${this.probeMs + 500} ms`)), this.probeMs + 500); }),
+            ]).finally(() => clearTimeout(timer));
+            this.noteProbe(m, true);
             return { reachable: true, primary: r['isWritablePrimary'] === true, secondary: r['secondary'] === true };
-        } catch {
+        } catch (err) {
+            this.noteProbe(m, false, errMsg(err));
+            const key = `${m.host}|false`;
+            const stale = this.memberClients.get(key);
+            if (stale) { this.memberClients.delete(key); void stale.close().catch(() => undefined); }
             return { reachable: false, primary: false, secondary: false };
         }
+    }
+
+    private readonly probeState = new Map<string, boolean>();
+    private noteProbe(m: StoreMember, ok: boolean, error?: string): void {
+        if (this.probeState.get(m.name) === ok) return;
+        this.probeState.set(m.name, ok);
+        logger.warn({ probed_member: m.name, probed_node: m.node, reachable: ok, error }, ok ? 'store member probe recovered' : 'store member probe failed');
     }
 
     // A unit is available for READS when at least one data-bearing member is a reachable primary or secondary.
@@ -354,9 +384,13 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         this.refreshing ??= Promise.all(topology.units.map(async (u): Promise<UnitStatus> => {
             const data = u.members.filter((m) => !m.arbiter);
             const hellos = await Promise.all(data.map((m) => this.hello(m)));
-            const ok = hellos.some((h) => h.primary || h.secondary);
-            return { unit: u.name, available: ok, detail: ok ? undefined : 'no readable data member' };
+            const live = hellos.filter((h) => h.primary || h.secondary).length;
+            const ok = live > 0;
+            return { unit: u.name, available: ok, detail: ok ? undefined : 'no readable data member', redundant: live >= data.length };
         })).then((value) => {
+            // Any unit with fewer live data members than configured means two-copy writes cannot be confirmed (see health.ts).
+            const short = value.filter((u) => !u.redundant).map((u) => u.unit);
+            setStoreDegraded(short.length > 0, short.join(','));
             this.statusCache = { at: Date.now(), value };
             return value;
         }).finally(() => { this.refreshing = undefined; });

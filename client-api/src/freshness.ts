@@ -16,5 +16,6 @@ export function buildSources(statuses: SourceStatuses, now: number = Date.now())
     return {
         BMKG: describeSource(statuses.BMKG, now),
         PVMBG: describeSource(statuses.PVMBG, now),
+        SENSOR_PANTAI: describeSource(statuses.SENSOR_PANTAI ?? { last_success_at: null, last_failure_at: null }, now),
     };
 }

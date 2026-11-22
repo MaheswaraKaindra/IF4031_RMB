@@ -14,7 +14,7 @@ export interface StoreTopology {
     units: StoreUnit[];
 }
 
-// Written by scripts/k8s/store-topology.sh into ConfigMap store-topology (layout + real node names).
+// Written by scripts/m2/store-topology.sh into ConfigMap store-topology (layout + real node names).
 export function loadTopology(): StoreTopology | undefined {
     const inline = process.env.STORE_TOPOLOGY;
     if (inline) return JSON.parse(inline) as StoreTopology;

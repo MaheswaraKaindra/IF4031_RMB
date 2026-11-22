@@ -25,19 +25,24 @@ import {
 import { HAZARD_TYPES, SOURCES, type HazardType, type Severity, type Source } from './storage/types.js';
 import { InvalidCursorError } from './storage/types.js';
 import { CORRELATION_HEADER, errorMessage, getLog, logger, requestLogger, timed } from './logger.js';
-import { emitSpan, metrics, metricsAndTracingMiddleware, metricsEndpoint, newSpanContext } from './observability.js';
+import { emitSpan, metrics, metricsAndTracingMiddleware, metricsEndpoint, newSpanContext, startChildSpan } from './observability.js';
 import { KubernetesLeaseProvider, MongoLeaseProvider, type ILeaseProvider } from './coordination/lease.js';
 import { fencedIngest, MongoSourceFenceStore } from './coordination/fencing.js';
 import { MongoCheckpointStore } from './coordination/checkpoints.js';
 import { SourceLeaderManager, type LeaderLeaseHandle } from './coordination/leaderLoop.js';
 import { parseBoundedRawJson } from './p3/boundedJson.js';
+import { noteBookkeepingFailure } from './storage/health.js';
+import { sinceWithOverlap } from './p3/pollCursor.js';
 import {
-    defaultSchemaRules,
     validateAndMapBmkgRecord,
     validateAndMapPvmbgRecord,
     type SchemaRulesConfig,
 } from './p3/schemaValidator.js';
+import { MongoRulesBackend, SchemaRulesStore } from './p3/schemaRulesStore.js';
 import { computeBackoffWithJitter, MongoRawInbox, type RawInboxItem } from './p3/rawInbox.js';
+import { CoastalService, coastalEnv } from './coastal/service.js';
+import { MongoDeliveryLedger, RECEIVER } from './coastal/ledger.js';
+import { SatelliteService, satelliteEnv } from './satellite/service.js';
 import { MongoFieldReportOutbox, relayPendingOutboxBatch, type FieldReportOutboxRecord } from './p3/fieldReports.js';
 
 const PORT = Number(process.env.AGGREGATOR_PORT || 3000);
@@ -63,14 +68,40 @@ const LEASE_RENEW_DEADLINE_MS = parseInt(process.env.LEASE_RENEW_DEADLINE_SEC ||
 const LEASE_RETRY_PERIOD_MS = parseInt(process.env.LEASE_RETRY_PERIOD_SEC || '3', 10) * 1000;
 const MAX_PAYLOAD_BYTES = parseInt(process.env.MAX_PAYLOAD_BYTES || '262144', 10); // 256 KiB
 const MAX_JSON_DEPTH = parseInt(process.env.MAX_JSON_DEPTH || '32', 10);
+const POLL_OVERLAP_MS = parseInt(process.env.POLL_OVERLAP_SEC || '120', 10) * 1000; // see p3/pollCursor.ts
 const INBOX_MAX_ATTEMPTS = parseInt(process.env.INBOX_MAX_ATTEMPTS || '5', 10);
 const REPLAY_MAX_PER_SEC = parseInt(process.env.REPLAY_MAX_PER_SEC || '50', 10);
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const EXCHANGE = 'hazard_events';
 const CRITICAL_EXCHANGE = 'hazard_critical';
-const CRITICAL_QUEUE = 'q_critical_alerts';
-const RECONNECT_DELAY_MS = 5000;
+const CRITICAL_QUEUE = 'q_critical_alerts_v2';
+const CRITICAL_QUEUE_ARGS = { 'x-queue-type': 'quorum', 'x-delivery-limit': 1_000_000 };
+const RECONNECT_DELAY_MS = Number(process.env.BROKER_RECONNECT_DELAY_MS || 1000);
+
+// A connect attempt towards a broker that is restarting can hang until the OS gives up (about two minutes). Bound it, and use
+// heartbeats so a half-open connection is noticed in seconds.
+const BROKER_CONNECT_TIMEOUT_MS = Number(process.env.BROKER_CONNECT_TIMEOUT_MS || 3000);
+async function connectBroker(url: string): Promise<amqp.ChannelModel> {
+    const withHeartbeat = url.includes('heartbeat=') ? url : `${url}${url.includes('?') ? '&' : '?'}heartbeat=${Number(process.env.BROKER_HEARTBEAT_SEC || 5)}`;
+    const attempt = amqp.connect(withHeartbeat, { timeout: BROKER_CONNECT_TIMEOUT_MS });
+    let timer: NodeJS.Timeout | undefined;
+    try {
+        return await Promise.race([
+            attempt,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`broker connect timed out after ${BROKER_CONNECT_TIMEOUT_MS} ms`)), BROKER_CONNECT_TIMEOUT_MS + 500);
+            }),
+        ]);
+    } catch (err) {
+        void attempt.then((c) => c.close()).catch(() => undefined);
+        throw err;
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
+
 const MAX_PENDING_PUBLISH = 10_000;
 
 const repo = lazyRepository();
@@ -78,31 +109,9 @@ const fenceStore = new MongoSourceFenceStore(getMongoDb);
 const checkpointStore = new MongoCheckpointStore(getMongoDb);
 const rawInbox = new MongoRawInbox(getMongoDb);
 const fieldReportOutbox = new MongoFieldReportOutbox(getMongoDb);
+const deliveryLedger = new MongoDeliveryLedger(getMongoDb);
 
-let schemaRules: SchemaRulesConfig = defaultSchemaRules();
-let schemaRulesLoadedAt = 0;
-
-async function getActiveSchemaRules(forceRefresh = false): Promise<SchemaRulesConfig> {
-    if (!forceRefresh && Date.now() - schemaRulesLoadedAt < 2000) return schemaRules;
-    try {
-        const doc = await getMongoDb().collection<{ _id: string; rules: SchemaRulesConfig }>('ops_config').findOne({ _id: 'pvmbg_schema_rules' });
-        if (doc?.rules) schemaRules = doc.rules;
-        schemaRulesLoadedAt = Date.now();
-    } catch {
-        // Keep current in-memory rules if store is temporarily unreachable
-    }
-    return schemaRules;
-}
-
-async function saveSchemaRules(next: SchemaRulesConfig): Promise<void> {
-    schemaRules = next;
-    schemaRulesLoadedAt = Date.now();
-    await getMongoDb().collection<{ _id: string; rules: SchemaRulesConfig; updated_at: string }>('ops_config').updateOne(
-        { _id: 'pvmbg_schema_rules' },
-        { $set: { rules: next, updated_at: new Date().toISOString() } },
-        { upsert: true }
-    );
-}
+const schemaRulesStore = new SchemaRulesStore(new MongoRulesBackend(getMongoDb));
 const polling = { BMKG: false, PVMBG: false };
 let shuttingDown = false;
 
@@ -128,7 +137,9 @@ function sendToBroker(item: PendingPublish, log: Logger): void {
         bufferEvent(item, log);
         return;
     }
-    const { event, correlationId, traceparent } = item;
+    const { event, correlationId } = item;
+    const pubSpan = startChildSpan('broker publish', item.traceparent, 'PRODUCER', { source: event.source, hazard_id: event.hazard_id, 'x-correlation-id': correlationId });
+    const traceparent = pubSpan.traceparent ?? item.traceparent;
     try {
         channel.publish(
             EXCHANGE,
@@ -142,11 +153,13 @@ function sendToBroker(item: PendingPublish, log: Logger): void {
                 persistent: true,
             },
             (error) => {
+                pubSpan.end(!error);
                 if (error) bufferEvent(item, log);
                 else log.info({ hazard_id: event.hazard_id, source: event.source, severity: event.severity }, 'Published HazardEvent');
             }
         );
     } catch {
+        pubSpan.end(false);
         bufferEvent(item, log);
     }
 }
@@ -176,20 +189,28 @@ function publishConfirmedToBroker(
 
 async function publishFieldReportOutboxRecord(record: FieldReportOutboxRecord): Promise<void> {
     const payload = Buffer.from(JSON.stringify(record.hazard_event));
+    const pubSpan = startChildSpan('broker publish field report', record.traceparent, 'PRODUCER', { hazard_id: record.hazard_event.hazard_id, attempt: record.attempts, 'x-correlation-id': record.correlation_id });
+    const traceparent = pubSpan.traceparent ?? record.traceparent;
     const props: amqp.Options.Publish = {
         contentType: 'application/json',
         messageId: `${record.hazard_event.hazard_id}:${record.hazard_event.severity}`,
         correlationId: record.correlation_id,
         headers: {
-            ...(record.traceparent ? { traceparent: record.traceparent } : {}),
+            ...(traceparent ? { traceparent } : {}),
             idempotency_key: record.idempotency_key,
         },
         persistent: true,
     };
-    await Promise.all([
-        publishConfirmedToBroker(EXCHANGE, '', payload, props),
-        publishConfirmedToBroker(CRITICAL_EXCHANGE, 'critical.field_report', payload, props),
-    ]);
+    try {
+        await Promise.all([
+            publishConfirmedToBroker(EXCHANGE, '', payload, props),
+            publishConfirmedToBroker(CRITICAL_EXCHANGE, 'critical.field_report', payload, props),
+        ]);
+        pubSpan.end(true);
+    } catch (err) {
+        pubSpan.end(false);
+        throw err;
+    }
 }
 
 function flushPendingPublish(): void {
@@ -203,11 +224,11 @@ function flushPendingPublish(): void {
 async function initRabbitMQ(): Promise<void> {
     if (shuttingDown) return;
     try {
-        const connection = await amqp.connect(RABBITMQ_URL);
+        const connection = await connectBroker(RABBITMQ_URL);
         const channel = await connection.createConfirmChannel();
         await channel.assertExchange(EXCHANGE, 'fanout', { durable: true });
         await channel.assertExchange(CRITICAL_EXCHANGE, 'direct', { durable: true });
-        await channel.assertQueue(CRITICAL_QUEUE, { durable: true });
+        await channel.assertQueue(CRITICAL_QUEUE, { durable: true, arguments: CRITICAL_QUEUE_ARGS });
         await channel.bindQueue(CRITICAL_QUEUE, CRITICAL_EXCHANGE, 'critical.field_report');
         await channel.bindQueue(CRITICAL_QUEUE, CRITICAL_EXCHANGE, 'critical.coastal');
 
@@ -316,7 +337,7 @@ async function ingestFencedRecord(
     log: Logger,
     correlationId: string,
     traceparent: string
-): Promise<'ok' | 'stale_epoch' | 'transient_queued'> {
+): Promise<'ok' | 'stale_epoch' | 'transient_queued' | 'held'> {
     // Per-key ordering: if an earlier record for this source_ref_id failed/is parked, hold this one too
     if (await rawInbox.hasBlockingFailure(event.source, event.source_ref_id)) {
         await rawInbox.appendFailure({
@@ -330,15 +351,20 @@ async function ingestFencedRecord(
             next_attempt_at: new Date(Date.now() + 2000).toISOString(),
         });
         metrics.inc('aggregator_inbox_messages_total', { source: event.source, status: 'retrying' });
-        return 'transient_queued';
+        // Held behind an earlier unprocessed version of the same key (the per-key order). The record is safely in the inbox, so the poll IS committed: returning
+        // 'transient_queued' here kept the source's cursor from advancing, and every poll then re-fetched and re-queued the whole stuck window (a wedge that grew
+        // the inbox by hundreds of messages a minute as soon as one key stayed parked).
+        return 'held';
     }
 
+    const storeSpan = startChildSpan('store ingest', traceparent, 'CLIENT', { source: event.source, hazard_id: event.hazard_id, 'x-correlation-id': correlationId });
     const res = await fencedIngest(
         repo,
         fenceStore,
         { event, eventVersion, epoch: handle.epoch },
         handle.isStillValid
     );
+    storeSpan.end(res.outcome !== 'unavailable', { outcome: res.outcome, created: res.created ? 1 : 0 });
 
     if (res.outcome === 'stale_epoch') {
         log.warn({ hazard_id: res.hazard_id, leader_epoch: handle.epoch }, 'stale leader epoch rejected during commit');
@@ -387,7 +413,7 @@ async function pollBmkg(): Promise<void> {
     polling.BMKG = true;
     try {
         const cp = await checkpointStore.get('BMKG', 'default');
-        const sinceCursor = cp?.committed_offset ?? new Date(0).toISOString();
+        const sinceCursor = sinceWithOverlap(cp?.committed_offset ?? new Date(0).toISOString(), POLL_OVERLAP_MS);
         const fetchTime = new Date().toISOString();
 
         const headers = {
@@ -524,7 +550,7 @@ async function pollPvmbg(): Promise<void> {
     polling.PVMBG = true;
     try {
         const cp = await checkpointStore.get('PVMBG', 'default');
-        const sinceCursor = cp?.committed_offset ?? new Date(0).toISOString();
+        const sinceCursor = sinceWithOverlap(cp?.committed_offset ?? new Date(0).toISOString(), POLL_OVERLAP_MS);
         const fetchTime = new Date().toISOString();
 
         let rawBuf: Buffer;
@@ -575,14 +601,13 @@ async function pollPvmbg(): Promise<void> {
             return;
         }
 
-        const activeRules = await getActiveSchemaRules();
         let allCommitted = true;
         for (const raw of parsed.value) {
             if (!handle.isStillValid()) {
                 allCommitted = false;
                 break;
             }
-            const validated = validateAndMapPvmbgRecord(raw, activeRules);
+            const validated = validateAndMapPvmbgRecord(raw, schemaRulesStore.current());
             if (!validated.ok) {
                 log.warn({ source_ref_id: validated.sourceRefId, reason: validated.reason }, 'PVMBG incompatible record parked');
                 await rawInbox.appendFailure({
@@ -650,10 +675,9 @@ async function processInboxRecord(item: RawInboxItem): Promise<{ ok: true } | { 
         return { ok: false, retryable: false, reason: parsed.reason };
     }
 
-    const activeRules = await getActiveSchemaRules();
     let event: HazardEvent | undefined;
     if (item.source === 'PVMBG') {
-        const mapped = validateAndMapPvmbgRecord(parsed.value, activeRules);
+        const mapped = validateAndMapPvmbgRecord(parsed.value, schemaRulesStore.current());
         if (!mapped.ok) return { ok: false, retryable: false, reason: mapped.reason };
         event = mapped.value;
     } else if (item.source === 'BMKG') {
@@ -876,7 +900,7 @@ app.post('/internal/raw-ingest', express.raw({ type: '*/*', limit: MAX_PAYLOAD_B
     }
 
     if (source === 'PVMBG') {
-        const mapped = validateAndMapPvmbgRecord(parsed.value, await getActiveSchemaRules());
+        const mapped = validateAndMapPvmbgRecord(parsed.value, schemaRulesStore.current());
         if (!mapped.ok) {
             const stored = await rawInbox.appendFailure({
                 source,
@@ -925,7 +949,7 @@ app.post('/internal/ops/unprocessed/replay', express.json(), async (req, res) =>
     const maxPerSec = typeof body['max_per_sec'] === 'number' && body['max_per_sec'] > 0 ? body['max_per_sec'] : REPLAY_MAX_PER_SEC;
 
     try {
-        await getActiveSchemaRules(true);
+        await schemaRulesStore.refresh();
         const stats = await rawInbox.replay({ source, reason }, processInboxRecord, maxPerSec, INBOX_MAX_ATTEMPTS);
         res.json(stats);
     } catch (err) {
@@ -934,22 +958,45 @@ app.post('/internal/ops/unprocessed/replay', express.json(), async (req, res) =>
     }
 });
 
+// Tim Lapangan receiver acknowledgement. Idempotent: only the first ack of a delivery is counted in the latency histogram.
+app.post('/internal/deliveries/ack', express.json({ limit: '4kb' }), async (req, res) => {
+    const hazardId = req.body?.hazard_id;
+    const receiver = typeof req.body?.receiver === 'string' ? req.body.receiver : RECEIVER;
+    if (typeof hazardId !== 'string' || hazardId === '') {
+        res.status(400).json({ error: 'hazard_id is required' });
+        return;
+    }
+    try {
+        const ack = await deliveryLedger.ack(hazardId, receiver);
+        if (!ack.known) {
+            res.status(404).json({ error: 'unknown delivery' });
+            return;
+        }
+        metrics.inc('coastal_critical_acks_total', { first: String(ack.first) });
+        if (ack.first && ack.latencyMs !== null) metrics.observe('coastal_critical_delivery_seconds', {}, ack.latencyMs / 1000);
+        res.json({ first: ack.first, latency_ms: ack.latencyMs });
+    } catch (error) {
+        noteBookkeepingFailure(error); // a write-concern timeout here means the store is degraded: later acknowledgements must not wait for w:2 again
+        getLog(res).warn({ error: errorMessage(error) }, 'delivery ack failed');
+        res.status(503).json({ error: 'ledger unavailable' });
+    }
+});
+
 app.get('/internal/ops/schema-rules', async (_req, res) => {
-    res.json(await getActiveSchemaRules(true));
+    await schemaRulesStore.refresh();
+    res.json(schemaRulesStore.current());
 });
 
 app.post('/internal/ops/schema-rules', express.json(), async (req, res) => {
-    const current = await getActiveSchemaRules(true);
     const body = (req.body ?? {}) as Partial<SchemaRulesConfig>;
-    const next: SchemaRulesConfig = {
-        enablePvmbgV2Compat: body.enablePvmbgV2Compat ?? current.enablePvmbgV2Compat,
-        fieldAliases: body.fieldAliases ?? (body.enablePvmbgV2Compat ? { mountain_code: 'volcano_id', status_level: 'alert_level' } : current.fieldAliases),
-        coerceNumericStrings: body.coerceNumericStrings ?? (body.enablePvmbgV2Compat ?? current.coerceNumericStrings),
-        defaults: body.defaults ?? current.defaults,
-    };
-    await saveSchemaRules(next).catch((err) => getLog(res).warn({ error: errorMessage(err) }, 'Failed to persist schema rules'));
-    getLog(res).info({ schema_rules: next }, 'PVMBG schema rules updated by Internal Ops');
-    res.json(next);
+    try {
+        const rules = await schemaRulesStore.update(body);
+        getLog(res).info({ schema_rules: rules }, 'PVMBG schema rules updated by Internal Ops');
+        res.json(rules);
+    } catch (err) {
+        getLog(res).error({ error: errorMessage(err) }, 'schema rules not saved');
+        res.status(503).json({ error: 'Canonical Store unavailable, schema rules not changed' });
+    }
 });
 
 // ---- Audit API (:3001) --------------------------------------------------------------------------
@@ -967,11 +1014,23 @@ const server = app.listen(PORT, async () => {
 
     try {
         await connectMongo();
-        await Promise.all([rawInbox.ensureIndexes(), fieldReportOutbox.ensureIndexes()]);
     } catch (error) {
         logger.fatal({ error: errorMessage(error) }, 'Failed to connect to MongoDB');
         process.exit(1);
     }
+    // Index creation is a write and needs the store's write concern (w:2). While a shard member is re-syncing after a node
+    // loss it times out: wait and retry (createIndex is idempotent) instead of exiting, otherwise every pod started during a
+    // recovery crash-loops until the shard has caught up.
+    for (let attempt = 1; ; attempt++) {
+        try {
+            await Promise.all([rawInbox.ensureIndexes(), fieldReportOutbox.ensureIndexes(), deliveryLedger.ensureIndexes()]);
+            break;
+        } catch (error) {
+            logger.warn({ error: errorMessage(error), attempt }, 'Inbox/outbox indexes not ready, retrying');
+            await new Promise((resolve) => setTimeout(resolve, Math.min(2000 * attempt, 10_000)));
+        }
+    }
+    schemaRulesStore.start();
 
     await initRabbitMQ();
 
@@ -1009,6 +1068,65 @@ const server = app.listen(PORT, async () => {
     bmkgLeader.start();
     pvmbgLeader.start();
 
+    const satelliteCfg = satelliteEnv(process.env);
+    const satelliteService = satelliteCfg
+        ? new SatelliteService(satelliteCfg, {
+              repo,
+              fenceStore,
+              checkpoints: checkpointStore,
+              getDb: getMongoDb,
+              leaseProvider,
+              identity: POD_IDENTITY,
+              leaseDurationMs: LEASE_DURATION_MS,
+              renewDeadlineMs: LEASE_RENEW_DEADLINE_MS,
+              retryPeriodMs: LEASE_RETRY_PERIOD_MS,
+              metrics,
+              logger,
+          })
+        : undefined;
+    if (satelliteService) satelliteService.start();
+    else logger.warn('SATELLITE_GROUP_TOKEN not set, satellite pipeline disabled');
+
+    const coastalCfg = coastalEnv(process.env);
+    const coastalService = coastalCfg
+        ? new CoastalService(coastalCfg, {
+              repo,
+              fenceStore,
+              checkpoints: checkpointStore,
+              ledger: deliveryLedger,
+              leaseProvider,
+              identity: POD_IDENTITY,
+              leaseDurationMs: LEASE_DURATION_MS,
+              renewDeadlineMs: LEASE_RENEW_DEADLINE_MS,
+              retryPeriodMs: LEASE_RETRY_PERIOD_MS,
+              quarantine: async (q) => {
+                  await rawInbox.appendFailure({
+                      source: 'SENSOR_PANTAI',
+                      source_ref_id: q.sourceRefId,
+                      raw: q.raw,
+                      status: 'parked',
+                      reason: q.reason,
+                      retryable: false,
+                  });
+                  metrics.inc('aggregator_inbox_messages_total', { source: 'SENSOR_PANTAI', status: 'parked' });
+              },
+              onCreated: (event) => sendToBroker({ event, correlationId: randomUUID() }, logger),
+              publishCritical: (event, traceparent) =>
+                  publishConfirmedToBroker(CRITICAL_EXCHANGE, 'critical.coastal', Buffer.from(JSON.stringify(event)), {
+                      contentType: 'application/json',
+                      messageId: `${event.hazard_id}:${event.severity}`,
+                      correlationId: event.hazard_id,
+                      headers: traceparent ? { traceparent } : {},
+                      persistent: true,
+                  }),
+              markSource: (ok) => (ok ? markSourceSuccess('SENSOR_PANTAI') : markSourceFailure('SENSOR_PANTAI')),
+              metrics,
+              logger,
+          })
+        : undefined;
+    if (coastalService) coastalService.start();
+    else logger.warn('PANTAI_AUTH_TOKEN not set, coastal pipeline disabled');
+
     const timers = [
         setInterval(pollBmkg, POLLING_INTERVAL),
         setInterval(pollPvmbg, POLLING_INTERVAL),
@@ -1021,7 +1139,7 @@ const server = app.listen(PORT, async () => {
             logger.info({ signal, pod: POD_IDENTITY }, 'aggregator draining and shutting down');
             shuttingDown = true;
             timers.forEach(clearInterval);
-            await Promise.all([bmkgLeader?.stop(), pvmbgLeader?.stop()]);
+            await Promise.all([bmkgLeader?.stop(), pvmbgLeader?.stop(), satelliteService?.stop(), coastalService?.stop()]);
             storageServer.close();
             server.close(async () => {
                 await rabbitConnection?.close().catch(() => undefined);

@@ -1,0 +1,36 @@
+# proof: G.3
+# date: 2026-11-22T17:33:44+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/audit-contract.sh
+# artificial case: none
+
+>>> errors
+PASS: no token: 401 with {error:{code,message}} ({"error":{"code":"unauthorized","message":"token tidak valid"}})
+PASS: wrong token: 401
+PASS: invalid limit: 400 with the error body
+PASS: unknown hazard_id: 404 with the error body
+PASS: hazard_id missing: 400
+>>> events
+PASS: 200
+PASS: Content-Type application/json
+PASS: default limit is 100 (100 items)
+PASS: response has exactly items, next_cursor, partial, unavailable_units
+PASS: event field names are exactly the contract's
+PASS: times are ISO 8601 UTC (Z)
+PASS: limit=1000 accepted
+PASS: limit=1001 clamped to at most 1000 items
+>>> pagination and order for source PVMBG
+PASS: last page has next_cursor null (53 pages)
+     10489 events
+PASS: source filter returns only PVMBG
+PASS: ascending by ingested_at, then hazard_id, across all pages
+PASS: no event repeated across pages
+PASS: since=2026-11-22T04:09:58.806Z keeps only ingested_at >= since (got 1000 of 5245 expected, limit 1000)
+>>> checksum
+PASS: checksum response fields and format ({"count":10489,"algorithm":"sha256","partial":false})
+PASS: checksum recomputed from the listing equals the endpoint's (10489 records)
+>>> location and unprocessed
+PASS: location: node/unit/role, roles primary or replica (["node-a/shard-1/primary","node-d/shard-1/replica"])
+PASS: unprocessed: fields and status values (5 items)
+ALL CHECKS PASSED
+# exit code: 0
