@@ -29,7 +29,7 @@
 
 \usepackage[indonesian]{babel}
 \usepackage{graphicx}
-\graphicspath{{figures/}{../evidence/}}
+\graphicspath{{figures/}{figures/proofs/}{../evidence/}}
 \usepackage{float}
 \usepackage{amsmath}
 \usepackage{amssymb}
@@ -147,5 +147,14 @@
     % Ganti kotak di atas saat mengisi laporan dengan:
     % \includegraphics[width=0.92\linewidth]{nama-file.png}
     \caption{#2}
+  \end{figure}
+}
+
+% Bukti pengujian: tangkapan layar hasil eksekusi pada klaster 3-VM (tinggi dibatasi agar tidak melebihi halaman)
+\newcommand{\gambarbukti}[4][0.36]{%
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.94\linewidth,height=#1\textheight,keepaspectratio]{#2}
+    \caption{#3}\label{fig:#4}
   \end{figure}
 }

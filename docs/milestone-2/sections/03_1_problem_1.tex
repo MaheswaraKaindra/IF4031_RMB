@@ -114,7 +114,7 @@ Seluruh operasi baca dan tulis Aggregator dikemas dalam kelas \texttt{MongoCanon
 \end{itemize}
 
 \paragraph*{4. Pemulihan Node Pengganti, Audit API, dan Dasbor Analitik}
-Skrip \path{scripts/k8s/p1-replace-node.sh} mengotomatiskan penggantian \textit{node} dengan disk kosong. Skrip memindahkan label \path{bnpb.io/store-slot} ke \textit{node} baru, menghapus \textit{pod} serta PVC lama, lalu menghidupkan kembali \textit{StatefulSet} terkait agar MongoDB menjalankan \textit{initial sync}. Setelah itu, \path{scripts/k8s/store-topology.sh} memperbarui peta penempatan \textit{node}.
+Skrip \path{scripts/m2/p1-replace-node.sh} mengotomatiskan penggantian \textit{node} dengan disk kosong. Skrip memindahkan label \path{bnpb.io/store-slot} ke \textit{node} baru, menghapus \textit{pod} serta PVC lama, lalu menghidupkan kembali \textit{StatefulSet} terkait agar MongoDB menjalankan \textit{initial sync}. Setelah itu, \path{scripts/m2/store-topology.sh} memperbarui peta penempatan \textit{node}.
 
 Pada sisi observabilitas data, \texttt{createStorageRouter} (\path{aggregator/src/storage/routes.ts}) menyediakan seluruh \textit{endpoint} Audit API Lampiran A serta \path{/internal/analytics/summary}. Halaman HTML mandiri \path{/analytics} (\path{analyticsPage.ts}) menyajikan grafik waktu per jenis bahaya, tabel per tingkat keparahan dan \path{area\_name}, spanduk ``\texttt{DATA BELUM LENGKAP}'', serta tombol rekonsiliasi ke Audit API.
 
@@ -165,31 +165,53 @@ Pada sisi observabilitas data, \texttt{createStorageRouter} (\path{aggregator/sr
     \toprule
     \textbf{Batasan} & \textbf{Penjelasan dan Alasan} & \textbf{Referensi Kode} \\
     \midrule
-    \textbf{Masa \textit{degraded write} bersalinan tunggal} & Saat satu \textit{node} mati dan belum diganti, tulisan baru pada \textit{shard} terdampak hanya tersimpan di satu \textit{primary} (\texttt{degraded: true}). Jika \textit{node} kedua ikut mati sebelum sinkronisasi tuntas, tulisan selama jeda tersebut berisiko hilang. & \path{docs/consistency.md:8}, \path{aggregator/src/storage/mongoRepository.ts:104-109} \\
+    \textbf{Masa \textit{degraded write} bersalinan tunggal} & Saat satu \textit{node} mati dan belum diganti, tulisan baru pada \textit{shard} terdampak hanya tersimpan di satu \textit{primary} (\texttt{degraded: true}). Jika \textit{node} kedua ikut mati sebelum sinkronisasi tuntas, tulisan selama jeda tersebut berisiko hilang. & \path{docs/m2/consistency.md:8}, \path{aggregator/src/storage/mongoRepository.ts:104-109} \\
     \midrule
-    \textbf{Pembacaan berpotensi \textit{stale read} sesaat} & Kueri memakai \texttt{primaryPreferred} dan \textit{read concern} \texttt{local}. Pembacaan dari \textit{secondary} atau sesaat setelah pergantian \textit{primary} dapat tertinggal tipis dari oplog terbaru, meski tulisan berstatus \texttt{w: 2} tetap aman. & \path{docs/consistency.md:17-18} \\
+    \textbf{Pembacaan berpotensi \textit{stale read} sesaat} & Kueri memakai \texttt{primaryPreferred} dan \textit{read concern} \texttt{local}. Pembacaan dari \textit{secondary} atau sesaat setelah pergantian \textit{primary} dapat tertinggal tipis dari oplog terbaru, meski tulisan berstatus \texttt{w: 2} tetap aman. & \path{docs/m2/consistency.md:17-18} \\
     \midrule
-    \textbf{Analitik dan \texttt{checksum} bukan \textit{snapshot} terisolasi} & Pemindaian menyeluruh memakai urutan kunci \texttt{\_id} dalam anggaran waktu $8.000\text{ ms}$ dengan stempel waktu \texttt{as\_of}. Bila penulisan aktif berlangsung bersamaan, perbandingan \texttt{checksum} dilakukan saat aliran tulis dihentikan sementara. & \path{docs/consistency.md:11-12}, \path{aggregator/src/storage/mongoRepository.ts:219-317} \\
+    \textbf{Analitik dan \texttt{checksum} bukan \textit{snapshot} terisolasi} & Pemindaian menyeluruh memakai urutan kunci \texttt{\_id} dalam anggaran waktu $8.000\text{ ms}$ dengan stempel waktu \texttt{as\_of}. Bila penulisan aktif berlangsung bersamaan, perbandingan \texttt{checksum} dilakukan saat aliran tulis dihentikan sementara. & \path{docs/m2/consistency.md:11-12}, \path{aggregator/src/storage/mongoRepository.ts:219-317} \\
     \midrule
-    \textbf{Otomatisasi penggantian hanya untuk tiga slot tetap} & Skrip \path{p1-replace-node.sh} dirancang untuk menggantikan salah satu dari tiga slot yang ada. Penambahan \textit{node} keempat sebagai \textit{shard} baru berkapasitas ekstra belum diotomatiskan oleh skrip. & \path{docs/decisions/ADR-0001-storage.md:42}, \path{scripts/k8s/p1-replace-node.sh:1-12} \\
+    \textbf{Otomatisasi penggantian hanya untuk tiga slot tetap} & Skrip \path{p1-replace-node.sh} dirancang untuk menggantikan salah satu dari tiga slot yang ada. Penambahan \textit{node} keempat sebagai \textit{shard} baru berkapasitas ekstra belum diotomatiskan oleh skrip. & \path{docs/m2/decisions/ADR-0001-storage.md:42}, \path{scripts/m2/p1-replace-node.sh:1-12} \\
     \bottomrule
   \end{tabularx}
 \end{table}
 
 \subsubsection{Bukti Penyelesaian per Kriteria}
-\isian{Bagian ini akan diisi setelah eksekusi skrip pengujian Problem 1 (\path{p1-load.sh}, \path{p1-hotspot.sh}, \path{p1-query.sh}, \path{p1-node-loss.sh}, \path{p1-replace-node.sh}, dan \path{p1-report.sh}) serta pengambilan tangkapan layar pada klaster 3-VM selesai dilakukan.}
 
-\begin{itemize}
-  \item \textbf{Kriteria 1 (Sebaran data dan penulisan):} \isian{Tampilkan sebaran data dan beban penulisan per node setelah memuat dataset katalog gempa historis.}
-  \item \textbf{Kriteria 2 (Ketidakmerataan beban):} \isian{Tampilkan hasil pengukuran beban tiap node saat pemuatan awal dan saat lonjakan gempa satu wilayah.}
-  \item \textbf{Kriteria 3 (Baca lintas penyimpanan dan \textit{pagination}):} \isian{Tampilkan bukti permintaan lintas seluruh unit penyimpanan dengan urutan dan \textit{pagination} yang benar.}
-  \item \textbf{Kriteria 4 (Node mati dan disk terhapus):} \isian{Tampilkan hasil verifikasi Audit API/\textit{checksum} (0 \texttt{HazardEvent} hilang) dan respons \texttt{partial: true} selama pemulihan.}
-  \item \textbf{Kriteria 5 (Penambahan \textit{node} baru berdisk kosong):} \isian{Tampilkan proses penyeimbangan ulang tanpa menghentikan baca dan tulis.}
-  \item \textbf{Kriteria 6 (Ketahanan \textit{node} berikutnya):} \isian{Tampilkan bukti sistem kembali toleran terhadap kehilangan satu node berikutnya.}
-  \item \textbf{Kriteria 7 (Dasbor analitik):} \isian{Sertakan tangkapan layar grafik garis per waktu, \textit{severity}, \texttt{area\_name}, kecocokan dengan Audit API, dan penandaan \textit{partial} saat \textit{node} mati.}
-\end{itemize}
+Bukti berikut berasal dari eksekusi skrip pada klaster tiga VM (\texttt{node-a}, \texttt{node-c}, \texttt{node-d}). Keluaran teks lengkap tiap eksekusi tersimpan di repositori pada \path{docs/m2/proofs/}. Dataset katalog gempa resmi dari asisten belum tersedia, sehingga Kriteria 1 hingga 6 memakai katalog simulasi 50.000 kejadian yang dimuat melalui jalur \textit{ingest} yang sama.
 
-\slotgambar{Bukti Penyelesaian Problem 1}{Bukti Eksekusi dan Verifikasi Problem 1}
+
+\paragraph*{Kriteria 1: sebaran data per \textit{node}.}
+\path{p1-report.sh} melaporkan 155.322 rekaman logis dengan salinan per \textit{node} sebanyak 103.494 (\texttt{node-a}), 103.477 (\texttt{node-d}), dan 103.587 (\texttt{node-c}). Pangsa terbesar satu \textit{node} adalah 0,667 dari dataset, sehingga tidak ada \textit{node} yang menyimpan seluruh data. Setiap \textit{shard} memiliki \textit{primary} dan \textit{secondary} pada \textit{node} berbeda.
+\gambarbukti{bk-1-1.png}{Sebaran data per \textit{node} dan lokasi salinan (\texttt{p1-report.sh})}{bk-1-1}
+
+\paragraph*{Kriteria 2: ketidakmerataan beban.}
+\path{p1-hotspot.sh} menulis 20.000 kejadian dari satu wilayah (Sumatera Barat). Tiap \textit{primary} menerima 8.284 (\texttt{shard-1}), 6.983 (\texttt{shard-2}), dan 6.941 (\texttt{shard-3}) penulisan. Rasio maksimum terhadap minimum adalah 1,19 (batas lulus $< 2$), sehingga lonjakan satu wilayah tidak memusatkan beban pada satu \textit{node}.
+\gambarbukti{bk-1-2.png}{Beban tulis per \textit{primary} saat lonjakan satu wilayah (\texttt{p1-hotspot.sh})}{bk-1-2}
+
+\paragraph*{Kriteria 3: baca lintas penyimpanan dan \textit{pagination}.}
+\path{p1-query.sh} menelusuri Audit API sepanjang 354 halaman (176.915 rekaman) tanpa duplikat dan tanpa pelanggaran urutan \path{(ingested_at, hazard_id)}. Permintaan 50 kejadian terbaru lintas jenis bahaya juga berurutan benar dan lengkap (\texttt{partial = false}).
+\gambarbukti{bk-1-3.png}{Urutan global dan \textit{pagination} lintas penyimpanan (\texttt{p1-query.sh})}{bk-1-3}
+
+\paragraph*{Kriteria 4: node mati dan disk terhapus.}
+Seluruh anggota penyimpanan pada satu slot dihentikan dan volumenya dihapus. Selama pemulihan terdapat 52 jawaban lengkap dan 2 jawaban \texttt{partial: true} yang ditandai eksplisit, 18 pembacaan \textit{client API} berhasil, dan 0 jawaban 5xx atau menggantung. Jumlah rekaman 176.957 menjadi 177.053 dengan 0 rekaman hilang. Pada uji kedua, satu \textit{shard} utuh dibuat tidak terjangkau: seluruh jawaban ditandai \texttt{partial: true} dengan \texttt{unavailable\_units} berisi \texttt{shard-1}, tanpa 5xx, dan data kembali utuh setelah dipulihkan. Perbandingan terhadap \textit{checksum} resmi asisten menunggu bahan pengujian dari asisten; pembandingan ini memakai rekaman sebelum dan sesudah kehilangan.
+\gambarbukti{bk-1-4.png}{Kehilangan slot dan penggantian volume kosong (\texttt{p1-node-loss.sh})}{bk-1-4}
+\gambarbukti{bk-1-4p.png}{Satu \textit{shard} tidak terjangkau: jawaban \textit{partial} eksplisit (\texttt{p1-unit-loss.sh})}{bk-1-4p}
+
+\paragraph*{Kriteria 5: node pengganti berdisk kosong tanpa menghentikan baca dan tulis.}
+Saat slot yang sama diganti dengan volume kosong, satu tulisan laporan lapangan dikirim tiap 0,5 detik: 496 dari 496 dijawab 202 (p95 0,07 detik), seluruhnya tersimpan tanpa duplikat. Pembacaan pada periode itu berjumlah 45 jawaban lengkap dan 3 jawaban \textit{partial} eksplisit, dengan 0 rekaman hilang.
+\gambarbukti{bk-1-5.png}{Penulisan dan pembacaan selama sinkronisasi awal (\texttt{p1-write-probe.sh})}{bk-1-5}
+
+\paragraph*{Kriteria 6: ketahanan terhadap kehilangan node berikutnya.}
+Setelah slot pertama pulih penuh, slot kedua diperlakukan sama: 51 jawaban lengkap, 17 pembacaan \textit{client API} berhasil, 0 jawaban buruk, dan rekaman 177.780 menjadi 177.853 dengan 0 hilang.
+\gambarbukti{bk-1-6.png}{Kehilangan \textit{node} berikutnya setelah pemulihan (\texttt{p1-node-loss.sh 2})}{bk-1-6}
+
+\paragraph*{Kriteria 7: dasbor analitik.}
+Dasbor menampilkan grafik per jenis bahaya, jumlah per \textit{severity}, dan jumlah per \texttt{area\_name} dengan spanduk hijau ``Data lengkap''. Tombol ``Cocokkan dengan Audit API'' menunjukkan angka yang sama (64.814 melawan 64.814, ``COCOK''). Saat satu \textit{shard} tidak terjangkau, spanduk berubah menjadi ``DATA BELUM LENGKAP: unit tidak terjangkau (shard-1)'' dan angkanya disebut batas bawah. Setelah pemulihan spanduk kembali hijau.
+\gambarbukti[0.30]{bk-1-7a.png}{Dasbor analitik lengkap (rentang 24 jam)}{bk-1-7a}
+\gambarbukti[0.30]{bk-1-7b.png}{Kecocokan angka dasbor dengan Audit API}{bk-1-7b}
+\gambarbukti[0.30]{bk-1-7c.png}{Spanduk data belum lengkap saat satu \textit{shard} mati}{bk-1-7c}
+\gambarbukti[0.30]{bk-1-7d.png}{Dasbor kembali lengkap setelah pemulihan}{bk-1-7d}
 
 \subsubsection{Jawaban atas Butir ``Di laporan''}
 
@@ -205,7 +227,7 @@ Router \texttt{mongos} memetakan rentang \textit{hash} 64-bit ke enam \textit{in
 
 Ketika satu \textit{node} mati permanen, satu anggota data pada dua \textit{shard} serta satu \textit{arbiter} ikut hilang. Dua \textit{node} yang masih hidup tetap menyimpan minimal satu salinan aktif untuk setiap \textit{shard}. Pembacaan tetap dilayani oleh anggota tersisa, sementara penulisan ke \textit{shard} terdampak ditandai sebagai \texttt{degraded: true} pada \textit{primary} hidup. Unit yang tidak terjangkau dicatat dalam daftar \texttt{unavailable\_units}.
 
-Ketika \textit{node} baru dengan disk kosong hadir, \path{scripts/k8s/p1-replace-node.sh} memindahkan label slot ke \textit{node} pengganti dan membuat volume baru bagi \textit{pod} \textit{StatefulSet} slot tersebut. MongoDB lalu menjalankan \textit{initial sync} otomatis untuk menyalin dokumen dan oplog tanpa mematikan layanan baca atau tulis. Terakhir, \path{store-topology.sh} menyegarkan peta penempatan untuk \path{/internal/audit/location}.
+Ketika \textit{node} baru dengan disk kosong hadir, \path{scripts/m2/p1-replace-node.sh} memindahkan label slot ke \textit{node} pengganti dan membuat volume baru bagi \textit{pod} \textit{StatefulSet} slot tersebut. MongoDB lalu menjalankan \textit{initial sync} otomatis untuk menyalin dokumen dan oplog tanpa mematikan layanan baca atau tulis. Terakhir, \path{store-topology.sh} menyegarkan peta penempatan untuk \path{/internal/audit/location}.
 
 \paragraph*{Jaminan Konsistensi per \textit{Endpoint} dan Perhitungan Dasbor Analitik}
 Pada kondisi normal maupun terdegradasi, tiap \textit{endpoint} menerapkan jaminan konsistensi terukur sebagai berikut:

@@ -179,7 +179,7 @@ Pada API publik \texttt{client-api}, tersedia \texttt{POST} \path{/field-reports
 
 \subsection{Observabilitas dan Audit API}
 
-Ketiga pilar observabilitas dipasang pada \textit{namespace} \texttt{sistem-\allowbreak informasi-\allowbreak kebencanaan-\allowbreak bnpb} (\path{docs/observability.md}):
+Ketiga pilar observabilitas dipasang pada \textit{namespace} \texttt{sistem-\allowbreak informasi-\allowbreak kebencanaan-\allowbreak bnpb} (\path{docs/m2/observability.md}):
 
 \begin{enumerate}
   \item \textbf{Metrik terpadu (Prometheus dan Grafana):} Prometheus menyapu otomatis seluruh 21 target \textit{pod} aktif (meliputi layanan inti, \textit{mock}, pengekspor RabbitMQ pada port \texttt{15692}, tiga pengekspor MongoDB per \textit{shard}, serta \textit{cAdvisor}). Data disajikan ke dalam empat dasbor Grafana yang sudah terpasang otomatis: ringkasan BNPB, koordinasi dan \textit{store}, aliran satelit Problem 4, serta ketahanan pantai Problem 5.
@@ -198,23 +198,23 @@ Untuk verifikasi independen saat pengujian, Aggregator menyediakan \textbf{Audit
 
 \subsection{Petunjuk Menjalankan Sistem}
 
-Seluruh sistem disiapkan agar dapat dijalankan dari kondisi awal klaster kosong melalui satu perintah \textit{deploy} berbasis skrip \path{scripts/deploy.sh}. Langkah operasionalnya meliputi tiga tahap berikut.
+Seluruh sistem disiapkan agar dapat dijalankan dari kondisi awal klaster kosong melalui satu perintah \textit{deploy} berbasis skrip \path{scripts/m2/deploy.sh}. Langkah operasionalnya meliputi tiga tahap berikut.
 
 \begin{enumerate}
   \item \textbf{Siapkan berkas kredensial dan rahasia acak:} salin templat lingkungan lalu bangkitkan token dan kata sandi menggunakan skrip pembantu di akar repositori.
-  \item \textbf{Persiapkan label \textit{node} dan \textit{image} (khusus klaster \textit{demo} multi-VM):} pasang label slot penyimpanan \texttt{1..3} pada ketiga VM via \path{scripts/k8s/label-nodes.sh}, lalu bangun dan unggah \textit{image} ke registri yang dapat diakses oleh ketiga \textit{node}.
+  \item \textbf{Persiapkan label \textit{node} dan \textit{image} (khusus klaster \textit{demo} multi-VM):} pasang label slot penyimpanan \texttt{1..3} pada ketiga VM via \path{scripts/m2/label-nodes.sh}, lalu bangun dan unggah \textit{image} ke registri yang dapat diakses oleh ketiga \textit{node}.
   \item \textbf{Jalankan perintah \textit{deploy} tunggal dan verifikasi dasar:} jalankan skrip deployment untuk \textit{overlay} \texttt{demo} (atau \texttt{dev} untuk klaster \textit{kind} lokal), lalu periksa sumber daya, fungsionalitas dasar, dan isolasi jaringan.
 \end{enumerate}
 
 \begin{lstlisting}[language=bash]
 # 1. Siapkan kredensial lokal (.env)
-cp .env.example .env && ./scripts/gen-secrets.sh >> .env
+cp .env.example .env && ./scripts/m1/gen-secrets.sh >> .env
 
 # 2. (Mode demo 3-VM) Beri label node slot dan unggah image
-./scripts/k8s/label-nodes.sh node-a node-b node-c
-PUSH=1 REGISTRY=<alamat-registry> TAG=demo ./scripts/k8s/build-images.sh
+./scripts/m2/label-nodes.sh node-a node-b node-c
+PUSH=1 REGISTRY=<alamat-registry> TAG=demo ./scripts/m2/build-images.sh
 
 # 3. Satu perintah deploy penuh + verifikasi awal (selaras README.md)
-REGISTRY=<alamat-registry> ./scripts/deploy.sh demo
-./scripts/k8s/verify-resources.sh && ./scripts/k8s/smoke.sh && ./scripts/k8s/verify-isolation.sh
+REGISTRY=<alamat-registry> ./scripts/m2/deploy.sh demo
+./scripts/m2/verify-resources.sh && ./scripts/m2/smoke.sh && ./scripts/m2/verify-isolation.sh
 \end{lstlisting}

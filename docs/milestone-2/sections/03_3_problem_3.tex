@@ -248,18 +248,21 @@ Tidak semua kasus ekstrem diselesaikan pada tahap ini agar kompleksitas tetap se
 \end{table}
 
 \subsubsection{Bukti Penyelesaian per Kriteria}
-\isian{Bagian ini akan diisi setelah eksekusi skrip pengujian dan pengambilan tangkapan layar pada klaster selesai dilakukan.}
 
-\begin{itemize}
-  \item \textbf{Kriteria 1 (Perubahan diterima atau ditolak):} \isian{Tampilkan perilaku PVMBG \textit{mock} pada mode aditif dan mode tidak kompatibel.}
-  \item \textbf{Kriteria 2 (Penyimpanan pesan gagal dan klasifikasi):} \isian{Tampilkan hasil \path{/internal/audit/unprocessed}, perlakuan \texttt{retrying} serta \texttt{parked}, dan hasil \textit{unit test backoff}.}
-  \item \textbf{Kriteria 3 (Empat jenis \textit{payload} rusak):} \isian{Tampilkan status \textit{pod} (\texttt{RESTARTS = 0}) dan pemrosesan pesan sehat setelahnya.}
-  \item \textbf{Kriteria 4 (Penyesuaian skema dan \textit{replay}):} \isian{Tampilkan \textit{checksum} sebelum dan sesudah \textit{replay}, urutan per \texttt{source\_ref\_id}, serta hilangnya pesan pulih dari daftar gagal.}
-  \item \textbf{Kriteria 5 (Akses khusus BNPB Internal Ops):} \isian{Tampilkan kode HTTP \texttt{401/403} bagi non-Ops dan \texttt{200} bagi \texttt{bnpb-ops}.}
-  \item \textbf{Kriteria 6 (\path{POST /field-reports} $\to$ \texttt{202} saat hilir mati):} \isian{Tampilkan waktu respons \texttt{202}, uji \textit{idempotency key}, pemulihan setelah \textit{broker} mati, dan log \textit{correlation ID}.}
-\end{itemize}
+Bukti berikut berasal dari eksekusi skrip pada klaster tiga VM (\texttt{node-a}, \texttt{node-c}, \texttt{node-d}). Keluaran teks lengkap tiap eksekusi tersimpan di repositori pada \path{docs/m2/proofs/}. Dataset resmi PVMBG dan skenario uji asisten belum tersedia; pengujian memakai \textit{mock} PVMBG pada mode perubahan skema yang disediakan.
 
-\slotgambar{Bukti Penyelesaian Problem 3}{Bukti Pengujian Kriteria Problem 3}
+
+\paragraph*{Kriteria 1, 2, 3, dan 5: kebijakan skema, penyimpanan pesan gagal, \textit{payload} rusak, dan akses Ops.}
+\path{p3-checks.sh} menjalankan 31 pemeriksaan. Perubahan aditif (bidang baru) diterima otomatis tanpa pesan terparkir, sedangkan perubahan nama bidang, tipe, dan bidang wajib hilang masing-masing memarkir 14 pesan beserta alasan, sumber, waktu, dan penanda \texttt{retryable}; kegagalan permanen bertanda \texttt{retryable = false}. Empat jenis \textit{payload} rusak (JSON terpotong, bersarang terlalu dalam, UTF-8 tidak valid, ukuran berlebih) disimpan utuh dan identik bit demi bit dengan kiriman sumber, tanpa \textit{pod} yang \textit{restart}, dan data BMKG tetap mengalir. Hanya \texttt{bnpb-ops} yang dapat memeriksa pesan gagal (HTTP 200); \texttt{media} dan \texttt{field-team} mendapat 403.
+\gambarbukti{bk-3-1.png}{Hasil pemeriksaan kebijakan skema, \textit{payload} rusak, \textit{replay}, akses Ops, dan 202 tahan banting (\texttt{p3-checks.sh})}{bk-3-1}
+
+\paragraph*{Kriteria 4: penyesuaian skema dan \textit{replay} berurutan.}
+Setelah aturan skema diubah, \textit{replay} memulihkan 14 pesan (21 tetap terparkir karena memang tidak terbaca tanpa perubahan kode), \textit{replay} kedua tidak memulihkan tambahan, dan tidak ada \texttt{HazardEvent} ganda. Urutan per \texttt{source\_ref\_id} dijaga: untuk satu laporan dengan dua versi, versi pertama diproses sebelum versi kedua meskipun versi kedua tersimpan lebih dulu, dan kejadian akhirnya membawa tingkat yang lebih baru (AWAS). Bila versi pertama tidak terbaca, versi kedua tertahan dan tidak diproses mendahuluinya.
+\gambarbukti{bk-3-4.png}{Urutan \textit{replay} per \texttt{source\_ref\_id} (\texttt{p3-order.sh})}{bk-3-4}
+
+\paragraph*{Kriteria 6: \path{POST /field-reports} tahan terhadap hilir mati.}
+Dengan \textit{broker} dimatikan dan seluruh \textit{aggregator} dimatikan segera sesudah balasan, 20 dari 20 laporan dijawab 202 dalam waktu kurang dari 1 detik dan tidak satu pun laporan yang dijawab 202 hilang atau diproses ganda. Pada uji lain satu \textit{node} dimatikan sungguhan saat laporan terus dikirim: 275 dari 275 dijawab 202 (p95 0,04 detik) pada percobaan pertama dan seluruhnya tersimpan tanpa duplikat. Jejak satu laporan hingga seluruh \textit{consumer} dan \textit{acknowledgement} ditunjukkan pada bagian bukti Problem 5 dan dalam Gambar~\ref{fig:bk-5-7a}.
+\gambarbukti{bk-3-6.png}{Penerimaan laporan lapangan saat \textit{node} dimatikan sungguhan (\texttt{p1-write-probe.sh})}{bk-3-6}
 
 \subsubsection{Jawaban atas Butir ``Di laporan''}
 
@@ -278,4 +281,4 @@ Setelah operator menyetel aturan skema baru lewat \path{POST /unprocessed/schema
 \paragraph*{Jaminan Pengiriman Jalur Laporan Tim Lapangan dan Pembuktiannya}
 Endpoint \path{POST /field-reports} memberikan jaminan \textbf{\textit{durable acceptance}} begitu API membalas \texttt{202 Accepted} dan \textbf{\textit{at-least-once delivery}} dari \texttt{runOutboxRelay} lewat RabbitMQ menuju \textit{consumer}. Saat dipadukan dengan penulisan kanonik yang \textit{idempotent} serta deduplikasi lokal pada \textit{consumer}, sistem mencapai jaminan efektif satu kali (\textbf{\textit{effectively-once}}).
 
-Pembuktian dilakukan pada dua level pengujian. Pada uji unit simulasi kegagalan di \path{aggregator/src/p2p3.test.ts}, pengulangan \texttt{Idempotency-Key} kembali dibalas \texttt{202} tanpa duplikat, konflik isi dibalas \texttt{409}, dan matinya \textit{broker} tepat sesudah \texttt{202} menghasilkan tepat satu dokumen kanonik saat pulih. Pada pengujian klaster melalui \path{scripts/k8s/p3-verify.sh}, mematikan \texttt{rabbitmq} dan \texttt{consumer-notifier} saat laporan dikirim tetap menghasilkan tepat satu catatan kanonik dan jejak \texttt{correlation\_id} utuh ketika \textit{broker} pulih.
+Pembuktian dilakukan pada dua level pengujian. Pada uji unit simulasi kegagalan di \path{aggregator/src/p2p3.test.ts}, pengulangan \texttt{Idempotency-Key} kembali dibalas \texttt{202} tanpa duplikat, konflik isi dibalas \texttt{409}, dan matinya \textit{broker} tepat sesudah \texttt{202} menghasilkan tepat satu dokumen kanonik saat pulih. Pada pengujian klaster melalui \path{scripts/m2/p3-verify.sh}, mematikan \texttt{rabbitmq} dan \texttt{consumer-notifier} saat laporan dikirim tetap menghasilkan tepat satu catatan kanonik dan jejak \texttt{correlation\_id} utuh ketika \textit{broker} pulih.

@@ -1,0 +1,16 @@
+\subsection{Bukti Pendukung Platform dan Observabilitas}
+
+Bukti berikut mendukung ketentuan platform (sumber daya, isolasi, rahasia, observabilitas) dan kontrak Audit API. Keluaran teks lengkap tersimpan di \path{docs/m2/proofs/}.
+
+\paragraph*{Sumber daya, isolasi, dan uji asap.}
+\path{verify-resources.sh} memastikan setiap \textit{pod} mendeklarasikan \textit{requests} dan \textit{limits} sesuai kelas komponen pada Lampiran B. \path{verify-isolation.sh} memastikan hanya \texttt{aggregator} yang dapat menjangkau anggota penyimpanan, sedangkan \texttt{client-api}, \texttt{auth-service}, \textit{consumer}, dan \textit{mock} ditolak. \path{smoke.sh} menunjukkan \path{/events} mengembalikan data dan seluruh sumber tidak basi. Total 164 pemeriksaan lulus dengan kode keluar 0.
+\gambarbukti[0.30]{bk-g-1.png}{Pemeriksaan sumber daya, isolasi \textit{NetworkPolicy}, dan uji asap}{bk-g-1}
+
+\paragraph*{Kontrak Audit API (Lampiran A).}
+\path{audit-contract.sh} memeriksa bentuk galat, \textit{Content-Type}, nama bidang, batas bawaan 100 dan maksimum 1000, \textit{pagination} hingga \texttt{next\_cursor} bernilai \texttt{null}, urutan \path{(ingested_at, hazard_id)}, penyaring \texttt{source} dan \texttt{since}, \textit{checksum} yang dihitung ulang, \path{/location}, dan \path{/unprocessed}. Dua puluh dua pemeriksaan lulus.
+\gambarbukti[0.40]{bk-g-3.png}{Hasil pemeriksaan kontrak Audit API (\texttt{audit-contract.sh})}{bk-g-3}
+
+\paragraph*{\textit{Correlation ID} pada log dan dasbor ringkasan.}
+Satu permintaan \path{GET /events} dengan \textit{header} \path{x-correlation-id: proof-log-1795343688} tampil dengan ID yang sama pada log \texttt{client-api} dan \texttt{aggregator}; log \texttt{aggregator} juga memuat \texttt{trace\_id} yang menghubungkannya ke \textit{trace} di Jaeger. Dasbor ringkasan menampilkan \textit{throughput}, \textit{error rate}, dan latensi p95 per layanan.
+\gambarbukti[0.30]{bk-g-2a.png}{Log berkorelasi untuk satu permintaan di \texttt{client-api} dan \texttt{aggregator}}{bk-g-2a}
+\gambarbukti[0.40]{bk-g-2b.png}{Dasbor ringkasan BNPB: \textit{throughput}, \textit{error rate}, dan latensi per layanan}{bk-g-2b}

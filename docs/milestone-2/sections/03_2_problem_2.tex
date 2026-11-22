@@ -201,20 +201,37 @@ Pengujian beban memakai \texttt{k6} pada \path{load-test/p2-scale.js} dari luar 
 \end{table}
 
 \subsubsection{Bukti Penyelesaian per Kriteria}
-\isian{Bagian ini akan diisi setelah eksekusi pengujian klaster 3-VM (\path{scripts/k8s/p2-verify.sh}, uji \textit{clock skew} dan pembekuan VM, serta \textit{load testing} \texttt{k6} \path{load-test/p2-scale.js} untuk skala $3 \to 5 \to 2$ dan \textit{rolling update}) selesai dilakukan.}
 
-\begin{itemize}
-  \item \textbf{Kriteria 1 ($\ge 3$ instans di \textit{node} berbeda):} \isian{Tampilkan status \textit{pod} antar-\textit{node} dan \textit{endpoint} titik masuk tunggal.}
-  \item \textbf{Kriteria 2 (Pengambilan tepat sekali):} \isian{Tampilkan log hulu dan hasil verifikasi tidak ada \texttt{HazardEvent} ganda.}
-  \item \textbf{Kriteria 3 (\textit{Failover} $\le 60$ detik):} \isian{Tampilkan pengukuran waktu pengambilalihan tanpa celah dan tanpa duplikat.}
-  \item \textbf{Kriteria 4 (\textit{Clock skew} +45 detik / -30 detik):} \isian{Tampilkan bukti tidak pernah ada dua instans menyimpan periode yang sama.}
-  \item \textbf{Kriteria 5 (Node membeku lalu bangun):} \isian{Tampilkan bukti \textit{zombie instance} ditolak sampai statusnya diperbarui.}
-  \item \textbf{Kriteria 6 (\textit{Load testing} $\ge 10.000$ VU, $\ge 120$ detik, skala $3 \to 5 \to 2$):} \isian{Sertakan grafik, \textit{error rate} $< 1\%$, dan log hulu.}
-  \item \textbf{Kriteria 7 (\textit{Throughput} 3 instans $\ge 2{,}0\times$ 1 instans):} \isian{Tampilkan tabel perbandingan \textit{throughput} 1 melawan 3 instans.}
-  \item \textbf{Kriteria 8 (Ganti versi saat \textit{load testing}):} \isian{Tampilkan hasil \textit{rolling update} dengan 0 permintaan gagal.}
-\end{itemize}
+Bukti berikut berasal dari eksekusi skrip pada klaster tiga VM (\texttt{node-a}, \texttt{node-c}, \texttt{node-d}). Keluaran teks lengkap tiap eksekusi tersimpan di repositori pada \path{docs/m2/proofs/}. Keluaran memakai instans \texttt{aggregator} yang dikelola HPA, sehingga jumlah \textit{pod} dapat berbeda pada tiap tangkapan layar.
 
-\slotgambar{Bukti Penyelesaian dan Load Testing Problem 2}{Bukti Pengujian dan Load Testing Problem 2}
+
+\paragraph*{Kriteria 1: tiga instans atau lebih di \textit{node} berbeda.}
+\path{p2-placement.sh} menunjukkan lima \textit{pod} \texttt{aggregator} Ready tersebar di tiga \textit{node} berbeda, pemeriksaan kesiapan pada \path{/health}, dan setiap \textit{Service} hanya menunjuk \textit{pod} yang Ready. Tiga puluh dari tiga puluh permintaan melalui titik masuk NodePort 30000 dijawab 200.
+\gambarbukti{bk-2-1.png}{Sebaran instans dan titik masuk tunggal (\texttt{p2-placement.sh})}{bk-2-1}
+
+\paragraph*{Kriteria 2: pengambilan tepat sekali.}
+\path{p2-single-fetch.sh} memeriksa 178.940 rekaman tanpa duplikat. Setiap \textit{mock} hulu melihat satu pemanggil yang sama dengan pemegang \textit{Lease} (20 dan 17 permintaan dalam 60 detik, batas 32), dan tiap sumber (BMKG, PVMBG, satelit, Sensor Pantai) memiliki tepat satu \textit{leader}.
+\gambarbukti{bk-2-2.png}{Satu pemanggil per sumber dan tanpa duplikat (\texttt{p2-single-fetch.sh})}{bk-2-2}
+
+\paragraph*{Kriteria 3: \textit{failover} $\le 60$ detik.}
+\textit{Node} yang memegang \textit{lease} dimatikan melalui VirtualBox. Instans lain mengambil alih dalam 15,8 detik (pesisir), 21,0 (BMKG), 21,6 (PVMBG), dan 22,1 detik (satelit), dengan satu pergantian \textit{leader} per sumber, jeda terpanjang antarpolling 3,1 detik, tanpa duplikat, dan tanpa rekaman hilang.
+\gambarbukti{bk-2-3.png}{Waktu pengambilalihan setelah \textit{node} mati (\texttt{p2-failover.sh})}{bk-2-3}
+
+\paragraph*{Kriteria 4: pergeseran jam.}
+Jam satu \textit{node} digeser +45 detik lalu $-30$ detik. Tidak pernah ada dua \textit{leader} valid pada putaran pemeriksaan yang sama (95 putaran), tanpa pemanggil berselang-seling, tanpa duplikat, dan 25 kejadian \textit{mock} selama uji seluruhnya tersimpan. Pergeseran jam tidak memicu pergantian \textit{leader} karena masa berlaku \textit{lease} diukur dengan jam monotonik lokal.
+\gambarbukti{bk-2-4.png}{Pergeseran jam tanpa dua \textit{leader} (\texttt{p2-clock-skew.sh})}{bk-2-4}
+
+\paragraph*{Kriteria 5: \textit{node} membeku lalu bangun.}
+VM \textit{leader} dijeda 28 detik lalu dilanjutkan. Instans lain memegang \textit{lease} saat pembekuan, instans yang bangun berhenti bertindak sebagai \textit{leader} dalam sekitar 1 detik, tidak membuat satu pun \textit{polling} hulu, tanpa duplikat dan tanpa rekaman hilang.
+\gambarbukti{bk-2-5.png}{Instans yang bangun setelah dibekukan ditolak (\texttt{p2-freeze.sh})}{bk-2-5}
+
+\paragraph*{Kriteria 6 dan 8: beban 10.000 pengguna, penskalaan, dan \textit{rolling update}.}
+Karena k6 tidak muat menahan 10.000 VU pada komputer ini, pengujian memakai generator asinkron \path{load-test/vu-sim.mjs}: 10.000 pengguna maya seluruhnya aktif selama 200 detik dengan laju sekitar 71 permintaan per detik (laju maksimum klaster sekitar 100 permintaan per detik). Selama itu \texttt{aggregator} diskalakan $3 \to 5 \to 2 \to 3$ dan dilakukan \textit{rolling update} pada detik ke-260. Dari 24.927 permintaan hanya 1 galat (0,004\%, batas $< 1\%$), p95 254 ms, dan Kriteria 2 tetap terpenuhi sesudahnya. Hasil yang sama berlaku untuk Kriteria 8: \textit{rolling update} tidak menggagalkan permintaan.
+\gambarbukti{bk-2-6.png}{Beban 10.000 pengguna dengan skala $3 \to 5 \to 2 \to 3$ dan \textit{rolling update} (\texttt{p2-load-10k.sh})}{bk-2-6}
+
+\paragraph*{Kriteria 7: \textit{throughput} tiga instans melawan satu instans.}
+Tanpa batas CPU, ketiga VM berbagi CPU satu komputer sehingga \texttt{aggregator} bukan penghambat dan rasio hanya sekitar 0,9 kali. Untuk mengukur lapisan \texttt{aggregator}, tiap \textit{pod} dibatasi 250m CPU selama uji ini (buatan): satu instans menghasilkan 8,1 permintaan sukses per detik (58\% gagal), tiga instans 42,8 (1\% gagal), yaitu \textbf{5,28 kali}. Angka ini hanya berlaku dengan batas CPU tersebut.
+\gambarbukti{bk-2-7.png}{Perbandingan \textit{throughput} satu dan tiga instans dengan batas CPU 250m (\texttt{p2-throughput-capped.sh})}{bk-2-7}
 
 \subsubsection{Jawaban atas Butir ``Di laporan''}
 

@@ -112,7 +112,7 @@ Setelah autentikasi JWT menentukan kelas klien (\texttt{field-team}, \texttt{bnp
 Dengan rumus partisi ini, gabungan \texttt{ops + media} maksimal hanya memakai $60$ slot dan \texttt{media} dibatasi maksimal $30$ slot. Sebanyak $40$ slot eksklusif selalu tersisa untuk \texttt{field-team}, sedangkan kelebihan beban langsung ditolak cepat dengan HTTP \texttt{429 Retry-After: 1}.
 
 \paragraph*{5. Observabilitas dan Penetapan SLO beserta \textit{Error Budget}}
-Sistem mengekspor metrik Prometheus dari 21 target \textit{pod} ke Grafana (dasbor 12 panel untuk ketahanan pantai), log JSON Pino ber-\texttt{correlation\_id}, serta jejak \textit{tracing} OpenTelemetry ke Jaeger (\path{docs/observability.md}). Dua target keandalan ditetapkan pada \path{docs/slo.md}: \textbf{99\% ketepatan waktu} pengiriman kritis dalam $\le 5\text{ detik}$ (\textit{error budget} $1\%$) serta \textbf{99,5\% admitansi} permintaan Tim Lapangan di \texttt{client-api} (\textit{error budget} $0{,}5\%$).
+Sistem mengekspor metrik Prometheus dari 21 target \textit{pod} ke Grafana (dasbor 12 panel untuk ketahanan pantai), log JSON Pino ber-\texttt{correlation\_id}, serta jejak \textit{tracing} OpenTelemetry ke Jaeger (\path{docs/m2/observability.md}). Dua target keandalan ditetapkan pada \path{docs/m2/slo.md}: \textbf{99\% ketepatan waktu} pengiriman kritis dalam $\le 5\text{ detik}$ (\textit{error budget} $1\%$) serta \textbf{99,5\% admitansi} permintaan Tim Lapangan di \texttt{client-api} (\textit{error budget} $0{,}5\%$).
 
 \subsubsection{Alasan Keputusan}
 
@@ -161,32 +161,56 @@ Sistem mengekspor metrik Prometheus dari 21 target \textit{pod} ke Grafana (dasb
     \toprule
     \textbf{Batasan} & \textbf{Penjelasan dan Alasan} & \textbf{Referensi Kode} \\
     \midrule
-    \textbf{\textit{Span} OpenTelemetry berhenti pada layanan pihak ketiga} & \textit{Mock}, MongoDB, RabbitMQ, dan \path{sensor-pantai} tidak memancarkan \textit{span} ke Jaeger. Pelacakan lintas \textit{broker} tetap tersambung lewat \texttt{correlation\_id} log dan \textit{field} \texttt{traceparent} di \path{coastal_deliveries}. & \path{docs/observability.md}, \path{aggregator/src/coastal/ledger.ts} \\
+    \textbf{\textit{Span} OpenTelemetry berhenti pada layanan pihak ketiga} & \textit{Mock}, MongoDB, RabbitMQ, dan \path{sensor-pantai} tidak memancarkan \textit{span} ke Jaeger. Pelacakan lintas \textit{broker} tetap tersambung lewat \texttt{correlation\_id} log dan \textit{field} \texttt{traceparent} di \path{coastal_deliveries}. & \path{docs/m2/observability.md}, \path{aggregator/src/coastal/ledger.ts} \\
     \midrule
-    \textbf{Jeda pengambilalihan saat VM fisik pemimpin mati ($30$--$38\text{ s}$)} & Meski \textit{lease} pantai sudah dipersingkat menjadi $8\text{ detik}$, deteksi mati \textit{node} k3s ($\approx 16\text{ s}$) memicu $p_{95} = 34\text{ s}$ pada uji \texttt{node-loss}. Seluruh 300/300 peringatan tetap sampai (0 hilang), namun 196 lewat $5\text{ detik}$. & \path{aggregator/src/coastal/service.ts}, \path{docs/slo.md}, \path{docs/evidence/pc-run-phase2.md} \\
+    \textbf{Jeda pengambilalihan saat VM fisik pemimpin mati ($30$--$38\text{ s}$)} & Meski \textit{lease} pantai sudah dipersingkat menjadi $8\text{ detik}$, deteksi mati \textit{node} k3s ($\approx 16\text{ s}$) memicu $p_{95} = 34\text{ s}$ pada uji \texttt{node-loss}. Seluruh 300/300 peringatan tetap sampai (0 hilang), namun 196 lewat $5\text{ detik}$. & \path{aggregator/src/coastal/service.ts}, \path{docs/m2/slo.md}, \path{docs/m2/evidence/pc-run-phase2.md} \\
     \midrule
-    \textbf{Saturasi CPU memicu \textit{tail latency} hilir saat banjir Media} & \texttt{PriorityAdmission} mencatat 0 penolakan \texttt{429} untuk Tim Lapangan. Namun di klaster 3-VM VirtualBox, banjir Media menaikkan $p_{95}$ baca menjadi $1{,}83$--$1{,}88\text{ s}$ serta memicu sedikit \textit{timeout} \texttt{2.000 ms} pada \path{POST /field-reports} walau laporan tetap tersimpan di \textit{outbox}. & \path{client-api/src/middleware/admission.ts}, \path{docs/deviations.md} \\
+    \textbf{Saturasi CPU memicu \textit{tail latency} hilir saat banjir Media} & \texttt{PriorityAdmission} mencatat 0 penolakan \texttt{429} untuk Tim Lapangan. Namun di klaster 3-VM VirtualBox, banjir Media menaikkan $p_{95}$ baca menjadi $1{,}83$--$1{,}88\text{ s}$ serta memicu sedikit \textit{timeout} \texttt{2.000 ms} pada \path{POST /field-reports} walau laporan tetap tersimpan di \textit{outbox}. & \path{client-api/src/middleware/admission.ts}, \path{docs/m2/deviations.md} \\
     \midrule
-    \textbf{Uji gabungan \textit{Tester Agent} (\textit{game day}) belum penuh} & Baru skenario \texttt{schema} yang lolos dari enam skenario latihan karena seluruh \textit{node} klaster k3s berperan sebagai \textit{control-plane}. Skenario ujian penuh juga menunggu kunci resmi saat demo. & \path{docs/deviations.md}, \path{docs/evidence/pc-run-phase2.md} \\
+    \textbf{Uji gabungan \textit{Tester Agent} (\textit{game day}) belum penuh} & Baru skenario \texttt{schema} yang lolos dari enam skenario latihan karena seluruh \textit{node} klaster k3s berperan sebagai \textit{control-plane}. Skenario ujian penuh juga menunggu kunci resmi saat demo. & \path{docs/m2/deviations.md}, \path{docs/m2/evidence/pc-run-phase2.md} \\
     \bottomrule
   \end{tabularx}
 \end{table}
 
 \subsubsection{Bukti Penyelesaian per Kriteria}
-\isian{Bagian ini akan diisi setelah eksekusi pengujian Problem 5 (\path{scripts/k8s/p5-checks.sh} 6 mode Sensor Pantai sakit, \path{scripts/k8s/p5-latency.sh}, uji prioritas \texttt{k6} \path{load-test/p5-priority.js}, serta skenario \textit{game day} Tester Agent saat demo) selesai direkam pada kondisi final.}
 
-\begin{itemize}
-  \item \textbf{Kriteria 1 (0 \textit{event} kritis hilang, $p_{95} \le 5$ detik):} \isian{Tampilkan hasil pengukuran pengiriman \textit{event} kritis Sensor Pantai hingga penerima notifikasi Tim Lapangan.}
-  \item \textbf{Kriteria 2 (Penyisihan data melanggar kontrak dasar):} \isian{Tampilkan bukti data cacat tidak masuk penyimpanan kanonik dan alasannya tercatat.}
-  \item \textbf{Kriteria 3 (Isolasi latensi sumber lain):} \isian{Tampilkan metrik latensi M1 untuk BMKG dan PVMBG tetap terpenuhi saat Sensor Pantai bermasalah.}
-  \item \textbf{Kriteria 4 (\textit{Circuit breaker} dan pemulihan otomatis):} \isian{Tampilkan grafik jumlah permintaan ke Sensor Pantai tidak melonjak, respons cepat, dan pemulihan otomatis.}
-  \item \textbf{Kriteria 5 (\textit{Priority load shedding}):} \isian{Tampilkan saat beban berlebih permintaan Tim Lapangan tetap sukses sementara Media ditolak terkontrol.}
-  \item \textbf{Kriteria 6 (\textit{Game day} kombinasi kegagalan tanpa intervensi):} \isian{Tampilkan log dan metrik pemulihan mandiri selama masa pemulihan.}
-  \item \textbf{Kriteria 7 (Diagnosis lewat dasbor, metrik, dan \textit{trace}):} \isian{Sertakan tangkapan layar dasbor dan \textit{trace} saat insiden.}
-  \item \textbf{Kriteria 8 (Target keandalan / SLO dan \textit{error budget}):} \isian{Tampilkan definisi SLO jalur Tim Lapangan dan pemakaian \textit{error budget} saat \textit{game day}.}
-\end{itemize}
+Bukti berikut berasal dari eksekusi skrip pada klaster tiga VM (\texttt{node-a}, \texttt{node-c}, \texttt{node-d}). Keluaran teks lengkap tiap eksekusi tersimpan di repositori pada \path{docs/m2/proofs/}. Kegagalan disuntikkan melalui sensor palsu (\texttt{sensor-fake}) yang hanya dipakai saat pengujian; skenario \textit{game day} Tester Agent menunggu bahan pengujian dari asisten.
 
-\slotgambar{Bukti Penyelesaian Problem 5}{Bukti Ketahanan Sensor Pantai dan Game Day Problem 5}
+
+\paragraph*{Kriteria 1: 0 \textit{event} kritis hilang, $p_{95} \le 5$ detik.}
+Pada kondisi normal 300 dari 300 \textit{alert} sampai ke penerima Tim Lapangan, p95 1.737 ms (p50 877 ms), dan tidak ada yang melewati 5 detik. Saat proses \textit{leader} pesisir dimatikan paksa, 400 dari 400 tetap terkirim dengan p95 4.447 ms; 16 \textit{alert} yang dipancarkan saat serah terima \textit{leader} melewati 5 detik secara individual. Pada uji terpisah, pemadaman \textit{node leader} pesisir sungguhan tidak menghilangkan \textit{alert}, tetapi jeda serah terima 30 hingga 38 detik membuat p95 sekitar 34 detik; ini batasan yang disadari dan tidak dianggap lulus (lihat bagian batasan).
+\gambarbukti{bk-5-1a.png}{Pengiriman \textit{alert} kritis kondisi normal (\texttt{p5-latency.sh})}{bk-5-1a}
+\gambarbukti{bk-5-1b.png}{Pengiriman \textit{alert} kritis saat proses \textit{leader} dimatikan paksa}{bk-5-1b}
+
+\paragraph*{Kriteria 2: penyisihan data yang melanggar kontrak.}
+Lima item yang melanggar kontrak dasar disuntikkan ke sensor palsu. Seluruhnya muncul dalam daftar pesan gagal Internal Ops dengan alasan (\texttt{missing\_field:observed\_at}, \texttt{out\_of\_range:wave\_height\_m}, \texttt{missing\_field:critical}), dan jumlah \texttt{HazardEvent} Sensor Pantai tidak berubah.
+\gambarbukti{bk-5-2.png}{Data melanggar kontrak disisihkan beserta alasannya (\texttt{p5-quarantine.sh})}{bk-5-2}
+
+\paragraph*{Kriteria 3: latensi sumber lain tetap terjaga.}
+Beban kerja M1 (\path{load-test/events.js}) dijalankan pada empat pengguna (skala diturunkan karena VM melayani sekitar 45 hingga 50 permintaan per detik tanpa jeda berpikir): p95 SEISMIC 169 ms (sensor normal), 155 ms (lambat), dan 133 ms (tidak menjawab), semuanya di bawah 300 ms dan tanpa permintaan gagal. Sensor sakit tidak membuat sumber lain lebih lambat. Pada enam pengguna p95 berada di tepi batas (235 hingga 321 ms) dan pada 50 pengguna M1 asli batas 300 ms tidak tercapai walau sensor sehat (batasan kapasitas VM).
+\gambarbukti{bk-5-3.png}{Latensi beban kerja M1 pada sensor normal, lambat, dan tidak menjawab (\texttt{p5-m1-load.sh})}{bk-5-3}
+
+\paragraph*{Kriteria 4: \textit{circuit breaker} dan pemulihan otomatis.}
+Pada enam mode sensor sakit (lambat, tidak menjawab, HTTP 503, rusak, basi, beku), permintaan ke sensor hanya 7 hingga 12 per 40 detik (dasar 38, batas 60), permintaan klien yang bergantung pada sensor dijawab dalam 44 hingga 59 ms dengan status 200, dan sistem memakai sensor lagi sendiri 1 hingga 4 detik setelah sensor pulih. Sumber lain tetap dengan p95 SEISMIC 47 hingga 80 ms. Seluruh 25 pemeriksaan lulus.
+\gambarbukti{bk-5-4.png}{Enam mode Sensor Pantai sakit (\texttt{p5-checks.sh})}{bk-5-4}
+
+\paragraph*{Kriteria 5: \textit{priority load shedding}.}
+Dengan 40 pengguna Media dan 5 pengguna Tim Lapangan, batas Media diturunkan sementara menjadi 4 permintaan bersamaan per \textit{pod} (normalnya 30) karena VM hanya melayani sekitar 50 permintaan per detik. Media ditolak terkontrol 16.889 kali (HTTP 429), Tim Lapangan dilayani penuh (452 pembacaan, 0 ditolak) dan seluruh 120 laporan diterima, dengan p95 981 ms (di bawah target internal 1 detik). Pada pengaturan baku dengan 100 pengguna Media, p95 Tim Lapangan sekitar 1,9 detik, yang merupakan batasan kapasitas CPU VM.
+\gambarbukti{bk-5-5.png}{Media ditolak terkontrol sementara Tim Lapangan dilayani (\texttt{load-test/p5-priority.js})}{bk-5-5}
+
+\paragraph*{Kriteria 6: \textit{game day} kombinasi kegagalan tanpa intervensi.}
+\isian{Tambahkan log dan metrik pemulihan mandiri dari \textit{game day} Tester Agent setelah kunci skenario ujian dibagikan asisten.}
+
+\paragraph*{Kriteria 7: diagnosis lewat dasbor, metrik, dan \textit{trace}.}
+Satu laporan lapangan dilacak melalui seluruh \textit{hop}: \textit{client API}, \texttt{aggregator}, penulisan ke penyimpanan, publikasi ke \textit{broker}, tiga \textit{consumer}, dan \textit{acknowledgement} (9 \textit{span}, 237 ms) dengan \textit{correlation ID} yang sama pada tiap \textit{span}. Satu \textit{alert} pesisir dilacak dari \textit{polling} sensor, \textit{ingest}, \textit{relay}, \textit{consumer}, hingga \textit{acknowledgement} (20 \textit{span}). Dasbor koordinasi (\textit{leader} dan \textit{epoch}) serta dasbor pesisir melengkapi diagnosis.
+\gambarbukti[0.30]{bk-5-7a.png}{Jejak satu laporan lapangan melalui seluruh \textit{hop}}{bk-5-7a}
+\gambarbukti[0.40]{bk-5-7b.png}{Rincian \textit{trace} di Jaeger dengan \textit{correlation ID}}{bk-5-7b}
+\gambarbukti[0.30]{bk-5-7c.png}{Jejak satu \textit{alert} kritis pesisir}{bk-5-7c}
+\gambarbukti[0.40]{bk-5-7d.png}{Dasbor koordinasi: \textit{leader} dan \textit{epoch}, poll, dan penyimpanan}{bk-5-7d}
+\gambarbukti[0.40]{bk-5-7e.png}{Dasbor ketahanan pesisir (\textit{circuit breaker} dan permintaan ke sensor)}{bk-5-7e}
+
+\paragraph*{Kriteria 8: target keandalan dan \textit{error budget}.}
+Target keandalan jalur peringatan Tim Lapangan didefinisikan pada \path{docs/m2/slo.md}. \isian{Tambahkan pemakaian \textit{error budget} selama \textit{game day} setelah skenario ujian dijalankan.}
 
 \subsubsection{Jawaban atas Butir ``Di laporan''}
 

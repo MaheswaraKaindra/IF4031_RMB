@@ -20,6 +20,35 @@ Fitur bonus ini \textbf{diimplementasikan} di dalam kode dan konfigurasi klaster
   \item \textbf{Kebijakan kenaikan dan penurunan:} ketika CPU melampaui ambang, HPA dapat menambah hingga dua \textit{pod} tiap 15 detik dengan masa stabilisasi 15 detik. Saat beban kembali reda, HPA menurunkan maksimal satu \textit{pod} tiap 30 detik sesudah menunggu masa stabilisasi 45 detik agar jumlah replika tidak naik turun terlalu cepat (\textit{flapping}).
 \end{itemize}
 
-Pada skrip pengujian penskalaan manual seperti \path{scripts/k8s/p2-load.sh}, konfigurasi \texttt{aggregator-hpa} disimpan sementara lalu dipulihkan kembali setelah skenario selesai agar pengubahan jumlah replika manual ($3 \to 5 \to 2$) tidak bertabrakan dengan penskalaan otomatis HPA.
+Pada skrip pengujian penskalaan manual seperti \path{scripts/m2/p2-load.sh}, konfigurasi \texttt{aggregator-hpa} disimpan sementara lalu dipulihkan kembali setelah skenario selesai agar pengubahan jumlah replika manual ($3 \to 5 \to 2$) tidak bertabrakan dengan penskalaan otomatis HPA.
 
-\slotgambar{Bukti Penskalaan Otomatis HPA}{Bukti Pertambahan dan Penurunan Replika Mengikuti Beban}
+\subsubsection{Hasil Pengujian Penskalaan}
+
+Pengujian \path{scripts/m2/hpa-ramp.sh} menaikkan beban buatan secara bertahap (k6, dari 5 hingga 60 pengguna tanpa jeda berpikir, 90 detik naik, 90 detik tahan) lalu menurunkannya, sambil mencatat jumlah replika dan pemakaian CPU yang dilihat HPA tiap 10 detik. Tabel berikut mengutip cuplikan hasilnya.
+
+\begin{table}[H]
+  \centering
+  \small
+  \begin{tabular}{@{} r l c c @{}}
+    \toprule
+    \textbf{Waktu} & \textbf{Fase} & \textbf{\texttt{client-api} (ready/target, CPU)} & \textbf{\texttt{aggregator} (ready/target, CPU)} \\
+    \midrule
+    +0 s & awal & 2/2, 1\% & 3/3, 29\% \\
+    +41 s & naik & 2/4, 328\% & 5/5, 106\% \\
+    +73 s & naik & 6/6, 295\% & 6/6, 133\% \\
+    +196 s & tahan & 6/6, 213\% & 6/6, 146\% \\
+    +297 s & beban berhenti & 6/6, 110\% & 6/6, 107\% \\
+    +359 s & turun & 5/5, 1\% & 5/5, 29\% \\
+    +419 s & turun & 3/3, 2\% & 3/3, 32\% \\
+    +449 s & selesai & 2/2, 2\% & 3/3, 28\% \\
+    \bottomrule
+  \end{tabular}
+  \caption{Replika mengikuti beban: naik ke maksimum, lalu kembali ke minimum}
+  \label{tab:hpa}
+\end{table}
+
+\textbf{Penjelasan singkat.} Pada awal rampa pemakaian CPU melonjak jauh di atas target $60\%$ dari \textit{request} (328\% pada \texttt{client-api} dengan \textit{request} 100m, 106\% hingga 301\% pada \texttt{aggregator} dengan \textit{request} 200m), sehingga HPA menambah dua \textit{pod} tiap 15 detik hingga batas enam replika pada sekitar detik ke-73. Selama fase turun beban masih berada di atas target, sehingga replika tetap enam; replika baru berkurang setelah beban berhenti, satu \textit{pod} tiap 30 detik sesudah masa stabilisasi 45 detik, dan kedua layanan kembali ke minimum (2 dan 3) 169 detik sesudah beban selesai. Selama pengujian k6 mengirim 25.155 permintaan dengan 0\% gagal (p95 1,09 detik karena VM jenuh pada puncak).
+
+\gambarbukti{bk-h-1a.png}{Jumlah replika dan CPU yang dilihat HPA selama rampa beban (\texttt{hpa-ramp.sh})}{bk-h-1a}
+\gambarbukti[0.40]{bk-h-1b.png}{Dasbor ringkasan: \textit{throughput} dan latensi per layanan selama rampa beban}{bk-h-1b}
+\gambarbukti[0.40]{bk-h-1c.png}{Memori per \textit{pod}: garis \textit{pod} bertambah dan berkurang mengikuti beban}{bk-h-1c}

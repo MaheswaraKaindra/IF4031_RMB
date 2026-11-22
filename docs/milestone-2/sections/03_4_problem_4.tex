@@ -158,20 +158,39 @@ Sesudah menulis efek dan catatan terlambat, pemroses menyimpan kemajuan ke \path
 \end{table}
 
 \subsubsection{Bukti Penyelesaian per Kriteria}
-\isian{Bagian ini akan diisi setelah eksekusi pengujian Problem 4 (\textit{streaming} langsung ke \path{https://satellite.naufarrel.dev}, simulasi percepatan $60\times$, penyuntikan \textit{crash} komponen pemroses saat klaster terbentuk, pemutusan koneksi SSE, serta verifikasi perbandingan terhadap hasil referensi asisten) selesai dijalankan di klaster.}
 
-\begin{itemize}
-  \item \textbf{Kriteria 1 (Pemetaan \textit{hotspot} $\to$ \texttt{HazardEvent WILDFIRE}):} \isian{Tampilkan hasil pengelompokan multisatelit menjadi satu \texttt{HazardEvent} dan pelaporan deteksi tunggal.}
-  \item \textbf{Kriteria 2 (Pengelompokan berbasis \textit{event time} dan keterlambatan):} \isian{Tampilkan batas keterlambatan, pembaruan deteksi terlambat yang valid, dan jumlah deteksi melewati batas.}
-  \item \textbf{Kriteria 3 (\textit{Update} dan \textit{retract}):} \isian{Tampilkan pembaruan \texttt{HazardEvent} eksisting tanpa menciptakan duplikat.}
-  \item \textbf{Kriteria 4 (Percepatan $60\times$):} \isian{Tampilkan bukti 0 data hilang, waktu kejar $\le 60$ detik, $p_{95}$ latensi, dan \textit{lag} pada dasbor.}
-  \item \textbf{Kriteria 5 (\textit{Crash} komponen pemroses saat pengenalan):} \isian{Tampilkan kesamaan hasil dengan pemrosesan tanpa gangguan.}
-  \item \textbf{Kriteria 6 (Perbandingan hasil referensi asisten):} \isian{Tampilkan hasil \textit{checksum}/perbandingan dan penjelasan bila ada selisih.}
-  \item \textbf{Kriteria 7 (Aliran \textit{live} beberapa menit):} \isian{Tampilkan tangkapan layar pemrosesan \textit{stream live}.}
-  \item \textbf{Kriteria 8 (Putus dan menyambung ulang):} \isian{Tampilkan kelanjutan dari \textit{offset}/\texttt{Last-Event-ID} tanpa celah dan duplikat.}
-\end{itemize}
+Bukti berikut berasal dari eksekusi skrip pada klaster tiga VM (\texttt{node-a}, \texttt{node-c}, \texttt{node-d}). Keluaran teks lengkap tiap eksekusi tersimpan di repositori pada \path{docs/m2/proofs/}. Pengujian memakai umpan satelit nyata milik asisten, yang sudah berjalan pada percepatan $60\times$.
 
-\slotgambar{Bukti Penyelesaian Problem 4}{Bukti Pemrosesan Stream dan Perbandingan Referensi Problem 4}
+
+\paragraph*{Kriteria 1 dan 3: pemetaan ke \texttt{HazardEvent WILDFIRE} serta \textit{update} dan \textit{retract}.}
+Seluruh log umpan (1.944.954 bingkai) diproses oleh \textit{pipeline}, lalu dihitung ulang secara independen dengan algoritma \textit{batch} terpisah. Keduanya menghasilkan 30.489 kebakaran yang sama: 0 hilang, 0 berlebih, 0 berbeda. Perhitungan itu memakai 1.647.896 deteksi, mengecualikan 205.098 deteksi berkepercayaan rendah, melaporkan 193.459 deteksi tunggal, dan menerapkan 38.881 penarikan (\textit{retract}) yang memperbarui kebakaran eksisting, tanpa membuat kejadian baru. Satu kebakaran yang terlihat beberapa satelit menjadi satu \texttt{HazardEvent} dengan pengenal stabil.
+\gambarbukti{bk-4-1.png}{Perbandingan \textit{pipeline} dengan perhitungan ulang independen (\texttt{satellite-tool reference})}{bk-4-1}
+
+\paragraph*{Kriteria 2: pengelompokan berbasis \textit{event time} dan keterlambatan.}
+Pengelompokan memakai waktu deteksi di satelit dengan batas keterlambatan 360 menit (\texttt{SATELLITE\_LATENESS\_MINUTES}). Deteksi di dalam batas tetap memperbarui kebakaran, dan deteksi di luar batas dihitung pada metrik \texttt{satellite\_late\_detections}, tidak dibuang diam-diam. Umpan nyata tidak menghasilkan deteksi terlambat selama pengujian (hitungan 0), sehingga jalur ini dibuktikan dengan 35 uji unit yang menyuntikkan deteksi terlambat (seluruhnya lulus).
+\gambarbukti{bk-4-2.png}{Uji unit pemrosesan deteksi terlambat, \textit{update}, dan \textit{retract}}{bk-4-2}
+
+\paragraph*{Kriteria 4: percepatan $60\times$.}
+Pada kondisi normal \textit{pipeline} mengejar umpan (selisih $\le 200$ bingkai) dengan p95 latensi dari bingkai masuk hingga \texttt{HazardEvent} tersimpan sebesar 0,25 detik atau kurang (465 bingkai dalam 45 detik). Untuk mensimulasikan lonjakan, koneksi umpan diputus 90 detik: sistem sudah mutakhir 2 detik setelah koneksi pulih (92 detik sejak pemutusan), offset hanya maju, dan log tetap utuh (1.973.601 bingkai tanpa celah atau duplikat). Dasbor memperlihatkan selisih naik hingga sekitar 225 bingkai lalu kembali 0.
+\gambarbukti[0.30]{bk-4-4a.png}{Kondisi normal: mutakhir dan p95 latensi (\texttt{p4-checks.sh})}{bk-4-4a}
+\gambarbukti[0.30]{bk-4-4b.png}{Lonjakan akibat pemutusan 90 detik dan pemulihan (\texttt{p4-reconnect.sh})}{bk-4-4b}
+\gambarbukti[0.40]{bk-4-4c.png}{Dasbor satelit: \textit{lag} terhadap umpan saat lonjakan}{bk-4-4c}
+
+\paragraph*{Kriteria 5: komponen pemroses mati saat pengenalan.}
+Proses \textit{leader} satelit dimatikan paksa (SIGKILL) tanpa melepas \textit{lease}. \textit{Leader} baru memproses kembali dalam 6 detik dengan \textit{epoch} lebih tinggi (298 menjadi 299), offset terkomit hanya maju (1.967.984 menjadi 1.968.248), dan log umpan tetap utuh (1.968.268 bingkai tanpa celah atau duplikat). Hasil akhir sama dengan pemrosesan tanpa gangguan, sebagaimana ditunjukkan oleh perbandingan independen di Kriteria 1.
+\gambarbukti{bk-4-5.png}{Pemulihan setelah \textit{leader} satelit dimatikan paksa (\texttt{p4-checks.sh})}{bk-4-5}
+
+\paragraph*{Kriteria 6: perbandingan dengan referensi asisten.}
+Hasil pembanding independen kelompok sendiri menunjukkan 0 selisih (Kriteria 1). \isian{Tambahkan hasil perbandingan dengan referensi asisten dan penjelasan selisihnya setelah referensi dibagikan.}
+
+\paragraph*{Kriteria 7: aliran \textit{live} beberapa menit.}
+Tiga cuplikan metrik berjarak sekitar satu menit menunjukkan offset umpan naik dari 1.974.189 ke 1.975.751 dan offset terkomit mengikutinya (1.974.207 ke 1.975.767), dengan \textit{lag} 0 dan 121 hingga 126 kebakaran aktif. Dasbor Grafana memperlihatkan aliran yang terus berjalan.
+\gambarbukti[0.30]{bk-4-7a.png}{Cuplikan metrik \textit{leader} satelit selama aliran \textit{live}}{bk-4-7a}
+\gambarbukti[0.40]{bk-4-7b.png}{Dasbor satelit pada aliran \textit{live}}{bk-4-7b}
+
+\paragraph*{Kriteria 8: putus dan menyambung ulang.}
+Koneksi ke umpan direset selama 20 detik pada \textit{node leader}. Pod tetap sama tanpa \textit{restart} dan tanpa pergantian \textit{leader}, lalu melanjutkan dari offset tersimpan: offset hanya maju (1.980.808 menjadi 1.980.930), sistem mutakhir 25 detik sejak pemutusan, dan log tetap utuh (1.980.952 bingkai tanpa celah atau duplikat).
+\gambarbukti{bk-4-8.png}{Putus dan menyambung ulang koneksi umpan (\texttt{p4-reconnect.sh})}{bk-4-8}
 
 \subsubsection{Jawaban atas Butir ``Di laporan''}
 
