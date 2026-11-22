@@ -1,0 +1,62 @@
+# proof: H.1
+# date: 2026-11-22T17:09:58+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/hpa-ramp.sh
+# artificial case: a ramped closed-loop load (k6) rises to 60 users and falls again; replicas are sampled every 10 s
+
+>>> HPA: client-api min 2 max 6, aggregator min 3 max 6 (target 60% CPU of the request)
+>>> waiting until both are at their minimum (up to 8 min)
+>>> both at their minimum; load ramp: 0 -> 5 -> 60 users in 90s, hold 90s, back to 5 in 60s, then 0
+time      phase        | client-api ready/desired cpu%      | aggregator ready/desired cpu%     
++0s       warm-up      | 2/2  1%                            | 3/3  29%                          
++11s      warm-up      | 2/2  1%                            | 3/3  29%                          
++20s      warm-up      | 2/2  1%                            | 3/3  37%                          
++31s      ramp-up      | 2/2  1%                            | 3/5  106%                         
++41s      ramp-up      | 2/4  328%                          | 5/5  106%                         
++50s      ramp-up      | 2/4  328%                          | 5/5  106%                         
++61s      ramp-up      | 4/6  433%                          | 5/6  301%                         
++73s      ramp-up      | 6/6  295%                          | 6/6  133%                         
++82s      ramp-up      | 6/6  529%                          | 6/6  133%                         
++93s      ramp-up      | 6/6  529%                          | 6/6  232%                         
++104s     ramp-up      | 6/6  304%                          | 6/6  190%                         
++113s     hold         | 6/6  206%                          | 6/6  190%                         
++124s     hold         | 6/6  206%                          | 6/6  164%                         
++134s     hold         | 6/6  232%                          | 6/6  150%                         
++144s     hold         | 6/6  219%                          | 6/6  150%                         
++155s     hold         | 6/6  219%                          | 6/6  147%                         
++165s     hold         | 6/6  204%                          | 6/6  136%                         
++175s     hold         | 6/6  212%                          | 6/6  136%                         
++186s     hold         | 6/6  212%                          | 6/6  146%                         
++196s     hold         | 6/6  213%                          | 6/6  146%                         
++206s     ramp-down    | 6/6  211%                          | 6/6  152%                         
++217s     ramp-down    | 6/6  211%                          | 6/6  152%                         
++227s     ramp-down    | 6/6  208%                          | 6/6  143%                         
++237s     ramp-down    | 6/6  208%                          | 6/6  151%                         
++247s     ramp-down    | 6/6  208%                          | 6/6  151%                         
++258s     ramp-down    | 6/6  207%                          | 6/6  151%                         
++267s     stopping     | 6/6  219%                          | 6/6  137%                         
+>>> load stopped at +277s; sampling until both are back at their minimum
++278s     no-load      | 6/6  219%                          | 6/6  137%                         
++288s     no-load      | 6/6  177%                          | 6/6  156%                         
++297s     no-load      | 6/6  110%                          | 6/6  107%                         
++308s     no-load      | 6/6  110%                          | 6/6  107%                         
++318s     no-load      | 6/6  45%                           | 6/6  25%                          
++327s     no-load      | 6/6  2%                            | 6/6  27%                          
++338s     no-load      | 6/6  2%                            | 6/6  27%                          
++348s     no-load      | 6/5  1%                            | 6/5  27%                          
++359s     no-load      | 5/5  1%                            | 5/5  29%                          
++368s     no-load      | 5/5  1%                            | 5/5  29%                          
++379s     no-load      | 5/4  1%                            | 5/4  28%                          
++389s     no-load      | 4/4  2%                            | 4/4  29%                          
++398s     no-load      | 4/4  2%                            | 4/4  29%                          
++409s     no-load      | 4/3  2%                            | 4/3  27%                          
++419s     no-load      | 3/3  2%                            | 3/3  32%                          
++428s     no-load      | 3/3  2%                            | 3/3  32%                          
++439s     no-load      | 3/2  2%                            | 3/3  29%                          
++449s     no-load      | 2/2  2%                            | 3/3  28%                          
+k6: requests 25155, failed 0%, p95 1093 ms
+client-api replicas: min 2 -> peak 6 -> back to 2; aggregator replicas: min 3 -> peak 6 -> back to 3
+PASS: scaled UP with the load (client-api peak 6 of max 6, aggregator peak 6 of max 6)
+PASS: scaled DOWN after the load stopped: both back at their minimum 169 s after the load ended
+ALL CHECKS PASSED
+# exit code: 0

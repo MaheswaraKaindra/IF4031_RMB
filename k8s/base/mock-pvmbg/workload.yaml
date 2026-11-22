@@ -1,4 +1,4 @@
-# Secret mock-pvmbg-secret (PVMBG_TOKEN_SHA256) is created by scripts/k8s/create-secrets.sh.
+# Secret mock-pvmbg-secret (PVMBG_TOKEN_SHA256) is created by scripts/m2/create-secrets.sh.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

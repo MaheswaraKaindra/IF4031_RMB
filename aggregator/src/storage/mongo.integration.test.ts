@@ -64,7 +64,7 @@ before(async () => {
     const h = client.db(DB).collection('hazards');
     await h.createIndex({ occurred_at: -1, hazard_id: 1 });
     await h.createIndex({ ingested_at: 1, hazard_id: 1 });
-    repo = new MongoCanonicalRepository({ client, dbName: DB, deadlineMs: 5000, scanPageSize: 7 });
+    repo = new MongoCanonicalRepository({ client, dbName: DB, deadlineMs: 5000, scanPageSize: 7, ingestedAtSource: 'caller' });
 });
 
 after(async () => {
@@ -156,4 +156,55 @@ test('stored documents keep internal fields out of the API shape', { skip }, asy
     assert.equal(got.hazard_id, r.hazard_id);
     for (const k of ['_id', 'event_version', 'fence_epoch']) assert.equal(k in got, false, `${k} leaked`);
     assert.equal((await repo.queryGlobal({ sort: 'ingested_asc', limit: 5 })).items[0]?.hazard_id, r.hazard_id);
+});
+
+test('store clock: ingested_at comes from the database, not from the record, and is set once', { skip }, async () => {
+    await reset();
+    const storeRepo = new MongoCanonicalRepository({ client, dbName: DB, deadlineMs: 5000 });
+    try {
+        const skewed = rec(1, { ingested_at: '2099-01-01T00:00:00.000Z' });
+        const before = Date.now();
+        const first = await storeRepo.ingest({ event: skewed, eventVersion: 1, epoch: 1 });
+        const after = Date.now();
+        assert.equal(first.outcome, 'applied');
+        assert.equal(first.created, true);
+        const stored = await storeRepo.getById(first.hazard_id);
+        const stamp = Date.parse(stored!.ingested_at);
+        assert.ok(stamp >= before - 2000 && stamp <= after + 2000, `stamp ${stored!.ingested_at} should be the store time, not the record's 2099`);
+        assert.match(stored!.ingested_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+
+        await new Promise((r) => setTimeout(r, 30));
+        const again = await storeRepo.ingest({ event: { ...skewed, severity: 'AWAS' }, eventVersion: 2, epoch: 1 });
+        assert.equal(again.outcome, 'applied');
+        assert.equal(again.created, false);
+        const updated = await storeRepo.getById(first.hazard_id);
+        assert.equal(updated!.ingested_at, stored!.ingested_at, 'a later write must not move ingested_at');
+        assert.equal(updated!.severity, 'AWAS');
+
+        const same = await storeRepo.ingest({ event: { ...skewed, severity: 'AWAS' }, eventVersion: 2, epoch: 1 });
+        assert.equal(same.outcome, 'duplicate');
+    } finally {
+        await storeRepo.close();
+    }
+});
+
+test('pipeline update stores values that start with a dollar sign literally and keeps fencing', { skip }, async () => {
+    await reset();
+    const storeRepo = new MongoCanonicalRepository({ client, dbName: DB, deadlineMs: 5000 });
+    try {
+        const tricky = rec(2, { area_name: '$ref', attributes: { note: '$$NOW', nested: { a: '$b' }, list: ['$c', { $d: 1 }] } });
+        const r = await storeRepo.ingest({ event: tricky, eventVersion: 1, epoch: 5 });
+        assert.equal(r.outcome, 'applied');
+        const got = await storeRepo.getById(r.hazard_id);
+        assert.equal(got!.area_name, '$ref');
+        assert.deepEqual(got!.attributes, { note: '$$NOW', nested: { a: '$b' }, list: ['$c', { $d: 1 }] });
+        const stale = await storeRepo.ingest({ event: tricky, eventVersion: 2, epoch: 4 });
+        assert.equal(stale.outcome, 'stale_epoch');
+        const raised = await storeRepo.ingest({ event: tricky, eventVersion: 3, epoch: 9 });
+        assert.equal(raised.outcome, 'applied');
+        const after = await storeRepo.ingest({ event: tricky, eventVersion: 4, epoch: 7 });
+        assert.equal(after.outcome, 'stale_epoch', 'the fence epoch only ever goes up');
+    } finally {
+        await storeRepo.close();
+    }
 });

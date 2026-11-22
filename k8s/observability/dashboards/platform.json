@@ -1,0 +1,360 @@
+{
+  "title": "BNPB coordination, broker and store",
+  "uid": "bnpb-platform",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "hide": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Leader per source (1 = this pod leads)",
+      "description": "Exactly one pod per source must be 1",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "aggregator_is_leader",
+          "legendFormat": "{{source}} {{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Leader epoch (fencing)",
+      "description": "Strictly increasing; a jump means a leadership change",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max by (source) (aggregator_leader_epoch)",
+          "legendFormat": "{{source}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Upstream poll duration p95",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, source) (rate(aggregator_poll_duration_seconds_bucket[2m])))",
+          "legendFormat": "{{source}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Polls by outcome",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (source, outcome) (rate(aggregator_poll_total[1m]))",
+          "legendFormat": "{{source}} {{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Inbox: unprocessed and outbox pending",
+      "description": "Parked messages wait for a schema change; the outbox drains when the broker is back",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(aggregator_inbox_unprocessed)",
+          "legendFormat": "parked/retrying messages",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(aggregator_outbox_pending)",
+          "legendFormat": "field reports waiting for the broker",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "RabbitMQ messages ready (all queues)",
+      "description": "Backlog of a slow or stopped consumer",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rabbitmq_queue_messages_ready)",
+          "legendFormat": "ready",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rabbitmq_queue_messages_unacked)",
+          "legendFormat": "unacked",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "RabbitMQ cluster members up",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "count(rabbitmq_identity_info)",
+          "legendFormat": "members",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Mongo replica set members by state",
+      "description": "Members per shard by state: expect 1 PRIMARY, 1 SECONDARY, 1 ARBITER",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "count by (set, state) (mongodb_rs_members_state)",
+          "legendFormat": "{{set}} {{state}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Mongo replication lag (s)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max by (set) (mongodb_mongod_replset_member_replication_lag)",
+          "legendFormat": "{{set}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Mongo opcounters",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (set, legacy_op_type) (rate(mongodb_op_counters_total[1m]))",
+          "legendFormat": "{{set}} {{legacy_op_type}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Coastal: requests sent to the sensor and critical delivery backlog",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (endpoint, outcome) (rate(coastal_sensor_requests_total[1m]))",
+          "legendFormat": "sensor {{endpoint}} {{outcome}}",
+          "refId": "A"
+        },
+        {
+          "expr": "max(coastal_oldest_undelivered_seconds)",
+          "legendFormat": "oldest undelivered critical (s)",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    "bnpb"
+  ]
+}

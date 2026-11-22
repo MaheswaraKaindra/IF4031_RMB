@@ -1,0 +1,173 @@
+# proof: G.1
+# date: 2026-11-22T17:30:43+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: bash -c scripts/m2/verify-resources.sh; scripts/m2/verify-isolation.sh; scripts/m2/smoke.sh
+# artificial case: none
+
+ok   aggregator-6f489f694d-dpk2k/aggregator role=aggregator 256Mi/512Mi
+ok   aggregator-6f489f694d-dpk2k/wait-for-deps role=aggregator 256Mi/512Mi
+ok   aggregator-6f489f694d-mpfwj/aggregator role=aggregator 256Mi/512Mi
+ok   aggregator-6f489f694d-mpfwj/wait-for-deps role=aggregator 256Mi/512Mi
+ok   aggregator-6f489f694d-rm5dw/aggregator role=aggregator 256Mi/512Mi
+ok   aggregator-6f489f694d-rm5dw/wait-for-deps role=aggregator 256Mi/512Mi
+ok   aggregator-6f489f694d-vhc65/aggregator role=aggregator 256Mi/512Mi
+ok   aggregator-6f489f694d-vhc65/wait-for-deps role=aggregator 256Mi/512Mi
+ok   aggregator-6f489f694d-wlsg2/aggregator role=aggregator 256Mi/512Mi
+ok   aggregator-6f489f694d-wlsg2/wait-for-deps role=aggregator 256Mi/512Mi
+ok   auth-service-b5cb8cf95-67n4n/auth-service role=api 128Mi/256Mi
+ok   auth-service-b5cb8cf95-xrvfj/auth-service role=api 128Mi/256Mi
+ok   client-api-778b7fb974-h7vrq/client-api role=api 128Mi/256Mi
+ok   client-api-778b7fb974-ztgbc/client-api role=api 128Mi/256Mi
+ok   consumer-dashboard-84cdbdcfcd-z7bfp/consumer role=consumer 128Mi/256Mi
+ok   consumer-notifier-74d87d95b7-f685g/consumer role=consumer 128Mi/256Mi
+ok   consumer-notifier-74d87d95b7-x4fh6/consumer role=consumer 128Mi/256Mi
+ok   consumer-portal-7b5cfd46-2xp7x/consumer role=consumer 128Mi/256Mi
+ok   grafana-599b6f996b-46qjw/grafana role=other 128Mi/256Mi
+ok   jaeger-6c77d747f4-qd4z2/jaeger role=other 128Mi/256Mi
+ok   mock-bmkg-67487648d-vlvm6/mock-bmkg role=mock 64Mi/128Mi
+ok   mock-pvmbg-59474b99d7-rn4hl/mock-pvmbg role=mock 64Mi/128Mi
+ok   mongo-cfg-1-0/mongod role=store 512Mi/1Gi
+ok   mongo-cfg-1-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-cfg-2-0/mongod role=store 512Mi/1Gi
+ok   mongo-cfg-2-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-cfg-3-0/mongod role=store 512Mi/1Gi
+ok   mongo-cfg-3-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-exporter-s1-7dd7fd6475-dgc5z/exporter role=other 128Mi/256Mi
+ok   mongo-exporter-s2-5b596cc787-tvssm/exporter role=other 128Mi/256Mi
+ok   mongo-exporter-s3-5bc56b7d95-6m7sw/exporter role=other 128Mi/256Mi
+ok   mongo-s1-a-0/mongod role=store 512Mi/1Gi
+ok   mongo-s1-a-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-s1-arb-0/mongod role=store 512Mi/1Gi
+ok   mongo-s1-arb-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-s1-b-0/mongod role=store 512Mi/1Gi
+ok   mongo-s1-b-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-s2-a-0/mongod role=store 512Mi/1Gi
+ok   mongo-s2-a-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-s2-arb-0/mongod role=store 512Mi/1Gi
+ok   mongo-s2-arb-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-s2-b-0/mongod role=store 512Mi/1Gi
+ok   mongo-s2-b-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-s3-a-0/mongod role=store 512Mi/1Gi
+ok   mongo-s3-a-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-s3-arb-0/mongod role=store 512Mi/1Gi
+ok   mongo-s3-arb-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongo-s3-b-0/mongod role=store 512Mi/1Gi
+ok   mongo-s3-b-0/copy-keyfile role=store 512Mi/1Gi
+ok   mongos-6ff9db8f6d-hlp27/mongos role=other 128Mi/256Mi
+ok   mongos-6ff9db8f6d-hlp27/wait-config-primary role=other 128Mi/256Mi
+ok   mongos-6ff9db8f6d-s872s/mongos role=other 128Mi/256Mi
+ok   mongos-6ff9db8f6d-s872s/wait-config-primary role=other 128Mi/256Mi
+ok   prometheus-566f6c9bf8-zjpd7/prometheus role=other 128Mi/256Mi
+ok   rabbitmq-0/rabbitmq role=broker 512Mi/1Gi
+ok   rabbitmq-1/rabbitmq role=broker 512Mi/1Gi
+ok   rabbitmq-2/rabbitmq role=broker 512Mi/1Gi
+ok   sensor-pantai-7d7799c896-95kkx/sensor role=sensor 128Mi/256Mi
+all resource and role checks passed
+ok   aggregator -> mongo-cfg-1:27017 allow
+ok   client-api -> mongo-cfg-1:27017 deny
+ok   auth-service -> mongo-cfg-1:27017 deny
+ok   consumer-notifier -> mongo-cfg-1:27017 deny
+ok   consumer-dashboard -> mongo-cfg-1:27017 deny
+ok   mock-bmkg -> mongo-cfg-1:27017 deny
+ok   aggregator -> mongo-cfg-2:27017 allow
+ok   client-api -> mongo-cfg-2:27017 deny
+ok   auth-service -> mongo-cfg-2:27017 deny
+ok   consumer-notifier -> mongo-cfg-2:27017 deny
+ok   consumer-dashboard -> mongo-cfg-2:27017 deny
+ok   mock-bmkg -> mongo-cfg-2:27017 deny
+ok   aggregator -> mongo-cfg-3:27017 allow
+ok   client-api -> mongo-cfg-3:27017 deny
+ok   auth-service -> mongo-cfg-3:27017 deny
+ok   consumer-notifier -> mongo-cfg-3:27017 deny
+ok   consumer-dashboard -> mongo-cfg-3:27017 deny
+ok   mock-bmkg -> mongo-cfg-3:27017 deny
+ok   aggregator -> mongo-s1-a:27017 allow
+ok   client-api -> mongo-s1-a:27017 deny
+ok   auth-service -> mongo-s1-a:27017 deny
+ok   consumer-notifier -> mongo-s1-a:27017 deny
+ok   consumer-dashboard -> mongo-s1-a:27017 deny
+ok   mock-bmkg -> mongo-s1-a:27017 deny
+ok   aggregator -> mongo-s1-arb:27017 allow
+ok   client-api -> mongo-s1-arb:27017 deny
+ok   auth-service -> mongo-s1-arb:27017 deny
+ok   consumer-notifier -> mongo-s1-arb:27017 deny
+ok   consumer-dashboard -> mongo-s1-arb:27017 deny
+ok   mock-bmkg -> mongo-s1-arb:27017 deny
+ok   aggregator -> mongo-s1-b:27017 allow
+ok   client-api -> mongo-s1-b:27017 deny
+ok   auth-service -> mongo-s1-b:27017 deny
+ok   consumer-notifier -> mongo-s1-b:27017 deny
+ok   consumer-dashboard -> mongo-s1-b:27017 deny
+ok   mock-bmkg -> mongo-s1-b:27017 deny
+ok   aggregator -> mongo-s2-a:27017 allow
+ok   client-api -> mongo-s2-a:27017 deny
+ok   auth-service -> mongo-s2-a:27017 deny
+ok   consumer-notifier -> mongo-s2-a:27017 deny
+ok   consumer-dashboard -> mongo-s2-a:27017 deny
+ok   mock-bmkg -> mongo-s2-a:27017 deny
+ok   aggregator -> mongo-s2-arb:27017 allow
+ok   client-api -> mongo-s2-arb:27017 deny
+ok   auth-service -> mongo-s2-arb:27017 deny
+ok   consumer-notifier -> mongo-s2-arb:27017 deny
+ok   consumer-dashboard -> mongo-s2-arb:27017 deny
+ok   mock-bmkg -> mongo-s2-arb:27017 deny
+ok   aggregator -> mongo-s2-b:27017 allow
+ok   client-api -> mongo-s2-b:27017 deny
+ok   auth-service -> mongo-s2-b:27017 deny
+ok   consumer-notifier -> mongo-s2-b:27017 deny
+ok   consumer-dashboard -> mongo-s2-b:27017 deny
+ok   mock-bmkg -> mongo-s2-b:27017 deny
+ok   aggregator -> mongo-s3-a:27017 allow
+ok   client-api -> mongo-s3-a:27017 deny
+ok   auth-service -> mongo-s3-a:27017 deny
+ok   consumer-notifier -> mongo-s3-a:27017 deny
+ok   consumer-dashboard -> mongo-s3-a:27017 deny
+ok   mock-bmkg -> mongo-s3-a:27017 deny
+ok   aggregator -> mongo-s3-arb:27017 allow
+ok   client-api -> mongo-s3-arb:27017 deny
+ok   auth-service -> mongo-s3-arb:27017 deny
+ok   consumer-notifier -> mongo-s3-arb:27017 deny
+ok   consumer-dashboard -> mongo-s3-arb:27017 deny
+ok   mock-bmkg -> mongo-s3-arb:27017 deny
+ok   aggregator -> mongo-s3-b:27017 allow
+ok   client-api -> mongo-s3-b:27017 deny
+ok   auth-service -> mongo-s3-b:27017 deny
+ok   consumer-notifier -> mongo-s3-b:27017 deny
+ok   consumer-dashboard -> mongo-s3-b:27017 deny
+ok   mock-bmkg -> mongo-s3-b:27017 deny
+ok   aggregator -> mongos:27017 allow
+ok   client-api -> mongos:27017 deny
+ok   auth-service -> mongos:27017 deny
+ok   consumer-notifier -> mongos:27017 deny
+ok   consumer-dashboard -> mongos:27017 deny
+ok   mock-bmkg -> mongos:27017 deny
+ok   aggregator -> mongos-direct:27017 allow
+ok   client-api -> mongos-direct:27017 deny
+ok   auth-service -> mongos-direct:27017 deny
+ok   consumer-notifier -> mongos-direct:27017 deny
+ok   consumer-dashboard -> mongos-direct:27017 deny
+ok   mock-bmkg -> mongos-direct:27017 deny
+ok   aggregator -> mongo-cfg-1-0.mongo-cfg-1:27017 allow
+ok   client-api -> mongo-cfg-1-0.mongo-cfg-1:27017 deny
+ok   aggregator -> mongo-cfg-2-0.mongo-cfg-2:27017 allow
+ok   client-api -> mongo-cfg-2-0.mongo-cfg-2:27017 deny
+ok   aggregator -> mongo-cfg-3-0.mongo-cfg-3:27017 allow
+ok   client-api -> mongo-cfg-3-0.mongo-cfg-3:27017 deny
+ok   data-mongo-cfg-1-0 on pvc-1ab0f0d0-9dd6-414e-882c-9b5e186919a5 (local, node node-a)
+ok   data-mongo-cfg-2-0 on pvc-5bee4d0e-4cc7-476b-9188-fceee18d2302 (local, node node-d)
+ok   data-mongo-cfg-3-0 on pvc-3c9e427f-1064-4b38-a753-83d4ca5b4143 (local, node node-c)
+ok   data-mongo-s1-a-0 on pvc-3fb6f827-19fb-4bec-ac9d-399adad66b6b (local, node node-a)
+ok   data-mongo-s1-arb-0 on pvc-aca1e81f-706f-414d-ac35-33e0209a6536 (local, node node-c)
+ok   data-mongo-s1-b-0 on pvc-28e95d2f-e9a7-4057-aa47-84688fe97570 (local, node node-d)
+ok   data-mongo-s2-a-0 on pvc-2b2dc934-0f12-4f9d-aecc-7589c3ccd203 (local, node node-d)
+ok   data-mongo-s2-arb-0 on pvc-194a74d0-0a19-4cfe-84d4-d835be01a725 (local, node node-a)
+ok   data-mongo-s2-b-0 on pvc-33a2ef39-4f60-455a-a02f-7f8b83268058 (local, node node-c)
+ok   data-mongo-s3-a-0 on pvc-e8abc930-bd75-44ee-83d9-1fbc8b3e526d (local, node node-c)
+ok   data-mongo-s3-arb-0 on pvc-efdd91d7-b5c0-4571-afd9-61a6be1cd505 (local, node node-d)
+ok   data-mongo-s3-b-0 on pvc-968e97d6-9915-4785-8493-faf437fea2df (local, node node-a)
+ok   data-rabbitmq-0 on pvc-996783a6-f6c7-486c-939a-77cdd521b488 (local, node node-c)
+ok   data-rabbitmq-1 on pvc-81d4a635-009a-447c-9530-012d517086c8 (local, node node-a)
+ok   data-rabbitmq-2 on pvc-cea03a1f-0b95-4516-9876-274e63a153df (local, node node-d)
+isolation checks passed
+ok: /events returned 5 events; sources: {"BMKG":{"last_success_at":"2026-11-22T10:31:58.782Z","stale":false,"stale_since":null},"PVMBG":{"last_success_at":"2026-11-22T10:31:59.741Z","stale":false,"stale_since":null},"SENSOR_PANTAI":{"last_success_at":"2026-11-22T10:31:59.312Z","stale":false,"stale_since":null}}
+# exit code: 0

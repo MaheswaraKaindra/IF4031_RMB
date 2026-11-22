@@ -1,0 +1,19 @@
+# proof: 3.6
+# date: 2026-11-22T14:41:08+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p1-write-probe.sh 150 '/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe' controlvm node-d poweroff; sleep 80; '/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe' startvm node-d --type headless
+# artificial case: none
+
+>>> 07:41:18 starting the loss: '/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe' controlvm node-d poweroff; sleep 80; '/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe' startvm node-d --type headless
+    cmd: 0%...10%...20%...30%...40%...50%...60%...70%...80%...90%...100%
+    cmd: Waiting for VM "node-d" to power on...
+    cmd: VM "node-d" has been successfully started.
+writes: 275 sent, 275 answered 202 at the first attempt, 0 needed a retry (same Idempotency-Key), 275 answered 202 in the end
+  202 answers slower than 1 s: 4
+  202 latency p50 0.01 s, p95 0.04 s, max 1.69 s
+>>> waiting up to 3 min for the reports to reach the store
+PASS: all 275 reports answered 202 are in the store
+PASS: no report stored twice
+PASS: every write ended with 202 within 3 attempts (0 needed a retry, which cannot store a report twice: see the duplicate check above)
+ALL CHECKS PASSED
+# exit code: 0

@@ -113,8 +113,13 @@ app.get('/metrics', (_req: Request, res: Response) => {
     res.type('text/plain; version=0.0.4').send(lines.join('\n') + '\n');
 });
 
+// ADMIN_OPEN=1 (Kubernetes manifests only): the official Tester Agent sends its admin calls to every mock without credentials. This
+// mock has no admin state, so such calls are accepted and ignored instead of failing the agent's step with HTTP 401.
+const ADMIN_OPEN = process.env.ADMIN_OPEN === '1';
+
 app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path === '/health' || req.path === '/metrics') return next();
+    if (ADMIN_OPEN && req.path.startsWith('/admin')) return res.status(200).json({ ok: true, message: 'mock-bmkg has no admin state' });
 
     const key = req.headers['x-bmkg-key'];
     if (typeof key !== 'string') {

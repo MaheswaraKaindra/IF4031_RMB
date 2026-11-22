@@ -1,0 +1,35 @@
+# proof: 1.4
+# date: 2026-11-22T11:21:38+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p1-node-loss.sh 3
+# artificial case: the node loss is simulated: every store member of slot 3 is stopped and its volume erased, then it restarts on an empty volume
+
+>>> precondition: redundancy intact (needed to survive the NEXT loss, criterion 6)
+before: 176957 records
+{"source":"BMKG","count":69287,"checksum":"963ffcd7742413a5c6268fbb6034096857e2be97136e1032de191292697f6818","partial":false}
+{"source":"PVMBG","count":8299,"checksum":"48782358b17b1c94c2b056779cc16598764ee959cab97280ea11d42803f1ef6a","partial":false}
+{"source":"SATELIT","count":31067,"checksum":"c8a3bcb1aa4c83b04b77c81671a71dc66e0676fcf7695e5a52e01182f6d3079c","partial":false}
+{"source":"SENSOR_PANTAI","count":66475,"checksum":"37b9272caf9d09e6ec3657ce90a6581d02b246d96ccb88f9e21794d9259ec7f4","partial":false}
+pre-loss ID list saved to /tmp/p1-ids-before-slot3.txt (input for p1-replace-node.sh if the node never returns)
+>>> simulating permanent loss of slot 3: mongo-cfg-3 mongo-s1-arb mongo-s2-b mongo-s3-a 
+>>> node gone; monitoring for 45s before the replacement (empty disk) joins
+partial  /internal/audit/events?limit=50 unavailable=["store-router"]
+partial  /internal/audit/checksum unavailable=["scan-timeout"]
+member mongo-cfg-3 restarted on a fresh, empty volume (pvc uid aa433c0e-06e6-4dcf-9d8c-266a6304e9dd -> 54e5f796-043e-4728-be62-b970e09442dd)
+member mongo-s1-arb restarted on a fresh, empty volume (pvc uid e6e4c6cb-ad2f-4687-81f7-d5903bf03936 -> a18fea07-2d29-4c79-859a-7d8e8dd99e5b)
+member mongo-s2-b restarted on a fresh, empty volume (pvc uid 848607bd-5429-4fd2-ae7a-38b7b1e61f11 -> ab3a632b-ec60-46dc-add9-1bd212e2d1fb)
+member mongo-s3-a restarted on a fresh, empty volume (pvc uid 73c55c35-63fc-4064-9035-87fc6b26bade -> 31a3e788-7a9f-42d5-a53c-226610f61509)
+>>> replacement joined with empty disks; monitoring until MONITOR_SECONDS=150s
+answers: audit/analytics complete=52 explicit_partial=2 | client-api ok=18 slow(>2s)=0 | bad=0
+>>> waiting for re-sync / redundancy (up to 20 min)
+redundancy restored: [{"unit":"shard-1","counts":[58946,58946]},{"unit":"shard-2","counts":[59001,59001]},{"unit":"shard-3","counts":[59092,59092]}]
+records before=176957 after=177053 lost=0
+after (evidence; counts may be higher because ingestion continued):
+{"source":"BMKG","count":69317,"checksum":"aaf5caac15eb2c1ee12befe4ef5cd809af8a6bfc753260909b3f74c8b72f4f3e","partial":false}
+{"source":"PVMBG","count":8329,"checksum":"ef8081e5d0fd66e50a2f527168fd46083591d132b28d1d04a0d453f53b04c23a","partial":false}
+{"source":"SATELIT","count":31103,"checksum":"40a48565169c3877422947bbfe7a3d45dee2239d06a30b6aa9272b8983c3214f","partial":false}
+{"source":"SENSOR_PANTAI","count":66475,"checksum":"37b9272caf9d09e6ec3657ce90a6581d02b246d96ccb88f9e21794d9259ec7f4","partial":false}
+PASS: no HazardEvent lost (every pre-loss record is still stored)
+PASS: no 5xx / hung request during the loss and recovery
+next: run again with a DIFFERENT slot to prove the system survives the next loss (criterion 6)
+# exit code: 0

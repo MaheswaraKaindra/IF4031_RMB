@@ -15,14 +15,14 @@ spec:
     spec:
       initContainers:
         - name: wait-config-primary
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command:
             - sh
             - -c
             - |
-              until mongosh --quiet --host mongo-cfg-1-0.mongo-cfg-1 --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' ||
-                    mongosh --quiet --host mongo-cfg-2-0.mongo-cfg-2 --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' ||
-                    mongosh --quiet --host mongo-cfg-3-0.mongo-cfg-3 --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; do
+              until mongo --quiet --host mongo-cfg-1-0.mongo-cfg-1 --eval 'quit(db.isMaster().ismaster ? 0 : 1)' ||
+                    mongo --quiet --host mongo-cfg-2-0.mongo-cfg-2 --eval 'quit(db.isMaster().ismaster ? 0 : 1)' ||
+                    mongo --quiet --host mongo-cfg-3-0.mongo-cfg-3 --eval 'quit(db.isMaster().ismaster ? 0 : 1)'; do
                 echo "waiting for config replica set primary"; sleep 3
               done
               cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile
@@ -34,7 +34,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongos
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["mongos"]
           args:
             - --configdb
@@ -71,5 +71,18 @@ metadata:
   name: mongos
   labels: {app.kubernetes.io/name: mongos, role: other, bnpb.io/store: "true"}
 spec:
+  selector: {app.kubernetes.io/name: mongos}
+  ports: [{name: mongo, port: 27017, targetPort: mongo}]
+---
+# Headless twin of the `mongos` Service: its SRV record (_mongo._tcp.mongos-direct) lists the Ready mongos pods one by one, so the aggregator's
+# driver tracks BOTH routers itself (1 s heartbeat) and stops using one that died with its node, instead of the ClusterIP that keeps sending
+# connections to the dead pod until its endpoint is removed (about 16-25 s).
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongos-direct
+  labels: {app.kubernetes.io/name: mongos, role: other, bnpb.io/store: "true"}
+spec:
+  clusterIP: None
   selector: {app.kubernetes.io/name: mongos}
   ports: [{name: mongo, port: 27017, targetPort: mongo}]

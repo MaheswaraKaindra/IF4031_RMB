@@ -1,0 +1,18 @@
+# proof: G.2-log
+# date: 2026-11-22T17:34:48+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: bash /home/nathanieljr/repos-wsl/IF4031_RMB/scripts/m2/proof.sh _logline
+# artificial case: none
+
+request: GET /events?limit=5 with x-correlation-id: proof-log-1795343688
+answer: HTTP 200
+--- log lines of client-api with that correlation id (all pods)
+{"level":"info","time":"2026-11-22T10:34:48.422Z","service":"client-api","correlation_id":"proof-log-1795343688","client_id":"field-team","target":"aggregator","call":"GET /internal/events","duration_ms":15,"msg":"outgoing call ok"}
+{"level":"info","time":"2026-11-22T10:34:48.423Z","service":"client-api","correlation_id":"proof-log-1795343688","client_id":"field-team","target":"aggregator","call":"GET /internal/status","duration_ms":15,"msg":"outgoing call ok"}
+{"level":"info","time":"2026-11-22T10:34:48.424Z","service":"client-api","correlation_id":"proof-log-1795343688","client_id":"field-team","method":"GET","path":"/events","status":200,"duration_ms":18,"msg":"request"}
+--- log lines of aggregator with that correlation id (all pods)
+{"level":"info","time":"2026-11-22T10:34:48.405Z","service":"aggregator","pod":"aggregator-6f489f694d-dpk2k","node":"node-d","correlation_id":"proof-log-1795343688","trace_id":"018494d610110eec81c04ddeddb903da","span_id":"73f27c1e460faf83","target":"mongo","call":"find source status","duration_ms":4
+{"level":"info","time":"2026-11-22T10:34:48.406Z","service":"aggregator","pod":"aggregator-6f489f694d-dpk2k","node":"node-d","correlation_id":"proof-log-1795343688","trace_id":"018494d610110eec81c04ddeddb903da","span_id":"73f27c1e460faf83","method":"GET","path":"/internal/status","status":200,"durat
+{"level":"info","time":"2026-11-22T10:34:48.420Z","service":"aggregator","pod":"aggregator-6f489f694d-vhc65","node":"node-a","correlation_id":"proof-log-1795343688","trace_id":"018494d610110eec81c04ddeddb903da","span_id":"66379dc75f54bf31","target":"mongo","call":"find hazards (sharded)","duration_m
+{"level":"info","time":"2026-11-22T10:34:48.421Z","service":"aggregator","pod":"aggregator-6f489f694d-vhc65","node":"node-a","correlation_id":"proof-log-1795343688","trace_id":"018494d610110eec81c04ddeddb903da","span_id":"66379dc75f54bf31","method":"GET","path":"/internal/events","status":200,"durat
+# exit code: 0

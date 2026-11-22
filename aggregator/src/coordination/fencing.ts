@@ -1,5 +1,6 @@
 import type { Collection, Db } from 'mongodb';
 import type { ICanonicalRepository, IngestInput, IngestResult } from '../storage/types.js';
+import { bookkeepingOptions } from '../storage/health.js';
 
 export interface FenceState {
     source: string;
@@ -25,7 +26,7 @@ export class MongoSourceFenceStore implements ISourceFenceStore {
     constructor(private readonly getDb: () => Db, private readonly collectionName = 'source_fences') {}
 
     private coll(): Collection<SourceFenceDoc> {
-        return this.getDb().collection<SourceFenceDoc>(this.collectionName);
+        return this.getDb().collection<SourceFenceDoc>(this.collectionName, bookkeepingOptions());
     }
 
     async activateEpoch(source: string, holderId: string): Promise<number> {

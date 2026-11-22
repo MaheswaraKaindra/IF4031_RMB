@@ -1,5 +1,5 @@
 # Final demo layout: 3 separate-kernel nodes (VMs), sharded store, sensor, observability.
-# Apply with scripts/deploy.sh demo (substitutes REGISTRY_PLACEHOLDER with $REGISTRY and creates the prerequisites).
+# Apply with scripts/m2/deploy.sh demo (substitutes REGISTRY_PLACEHOLDER with $REGISTRY and creates the prerequisites).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 # store/sensor/observability manifests carry no namespace: pin everything here (the spec fixes the name).
@@ -20,7 +20,7 @@ configMapGenerator:
       - STORE_WRITE_W=2
       - STORE_WRITE_TIMEOUT_MS=1500
       - STORE_DEADLINE_MS=1000   # client-api gives up after 2s: leave room for the router hop + serialisation
-      - STORE_STRICT_WRITES=0    # 1 = fail closed on a write-concern timeout (see docs/consistency.md)
+      - STORE_STRICT_WRITES=0    # 1 = fail closed on a write-concern timeout (see docs/m2/consistency.md)
 
 patches:
   # Node loss: by default Kubernetes waits 300s before moving pods off an unreachable node, i.e. minutes of outage for any
@@ -52,6 +52,21 @@ patches:
             topologySpreadConstraints:
               - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeTaintsPolicy: Honor,
                  labelSelector: {matchLabels: {app.kubernetes.io/name: client-api}}}
+  # Aggregator replicas must sit on different nodes (spec P2 criterion 1); the base only prefers it (ScheduleAnyway), and
+  # measured placement put two replicas and the leader on one node, so a single node loss took out most of them.
+  # matchLabelKeys: a rolling update otherwise counts the old revision's pods and leaves the new ones unevenly placed.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: aggregator
+      spec:
+        template:
+          spec:
+            topologySpreadConstraints:
+              - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeTaintsPolicy: Honor,
+                 matchLabelKeys: [pod-template-hash],
+                 labelSelector: {matchLabels: {app.kubernetes.io/name: aggregator}}}
   # auth-service: 2 replicas on different nodes so token issuance survives a node loss. Both Services use ClientIP
   # affinity (refresh tokens are per replica); a client whose replica dies re-authenticates with /token, as after a restart.
   - patch: |-
@@ -106,16 +121,16 @@ patches:
               # NOT on RabbitMQ: the aggregator buffers and reconnects by itself, and the single broker pod is not
               # recreated while its node is unreachable (StatefulSet), which would keep the whole read path down.
               - name: wait-for-deps
-                image: docker.io/library/mongo:7
+                image: docker.io/library/mongo:4.4
                 env:
                   - {name: HOME, value: /tmp}
                   - name: MONGO_URI
-                    valueFrom: {secretKeyRef: {name: aggregator-secret, key: MONGO_URI}}
+                    valueFrom: {secretKeyRef: {name: aggregator-secret, key: MONGO_URI_PLAIN}}
                 command:
                   - bash
                   - -c
                   - |
-                    until mongosh "$MONGO_URI" --quiet --eval 'quit(db.hello().ok ? 0 : 1)' >/dev/null 2>&1; do
+                    until mongo "$MONGO_URI" --quiet --eval 'quit(db.isMaster().ok ? 0 : 1)' >/dev/null 2>&1; do
                       echo "waiting for store bootstrap"; sleep 3
                     done
             containers:

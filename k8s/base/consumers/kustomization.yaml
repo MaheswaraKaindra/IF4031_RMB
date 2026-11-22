@@ -6,5 +6,8 @@ configMapGenerator:
   - name: consumers-config
     literals:
       - HEALTH_PORT=8095
+      - AGGREGATOR_URL=http://aggregator-ack:3000
+      - ACK_TIMEOUT_MS=1500
+      - ACK_ATTEMPTS=3
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
       - LOG_LEVEL=info

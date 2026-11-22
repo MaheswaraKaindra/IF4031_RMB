@@ -13,15 +13,17 @@ const VUS = Number(__ENV.VUS || 10000);
 const DURATION = __ENV.DURATION || '120s';
 
 const rejected429 = new Counter('controlled_rejected_429');
+const ok200 = new Counter('ok_200');
+// RATE (requests/s) switches to an open model: a fixed arrival rate with up to VUS virtual users, so a slow system shows up as latency
+// and errors instead of silently lowering the offered load. Without RATE it keeps the original closed model (VUS constant users).
+const RATE = Number(__ENV.RATE || 0);
 http.setResponseCallback(http.expectedStatuses(200, 429));
 
 export const options = {
     scenarios: {
-        sustained_10k: {
-            executor: 'constant-vus',
-            vus: VUS,
-            duration: DURATION,
-        },
+        sustained_10k: RATE > 0
+            ? { executor: 'constant-arrival-rate', rate: RATE, timeUnit: '1s', duration: DURATION, preAllocatedVUs: Math.min(VUS, 500), maxVUs: VUS }
+            : { executor: 'constant-vus', vus: VUS, duration: DURATION },
     },
     thresholds: {
         http_req_failed: ['rate<0.01'],
@@ -68,6 +70,8 @@ export default function (data) {
         tags: { endpoint: 'events' },
     });
     if (res.status === 429) rejected429.add(1);
+    if (res.status === 200) ok200.add(1);
+    if (__ENV.LOG_ERRORS && res.status !== 200 && res.status !== 429 && (__ENV.LOG_ERRORS === 'all' || Math.random() < 0.05)) console.warn(`status=${res.status} error=${res.error || ''} duration=${Math.round(res.timings.duration)}ms`);
     check(res, { 'status is 200 or 429': (r) => r.status === 200 || r.status === 429 });
-    sleep(0.5);
+    if (RATE === 0) sleep(0.5);
 }

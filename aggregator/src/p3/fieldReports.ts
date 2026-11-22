@@ -4,6 +4,8 @@ import type { ICanonicalRepository } from '../storage/types.js';
 import type { HazardEvent } from '../utils/mapper.js';
 import { computeBackoffWithJitter } from './rawInbox.js';
 import { mapFieldReportToHazard, validateFieldReport } from './schemaValidator.js';
+import { bookkeepingOptions, noteBookkeepingFailure } from '../storage/health.js';
+import { startChildSpan } from '../observability.js';
 
 export type OutboxStatus = 'pending' | 'published';
 
@@ -55,7 +57,7 @@ export class MongoFieldReportOutbox implements FieldReportStore {
     constructor(private readonly getDb: () => Db, private readonly collectionName = 'field_reports_outbox') {}
 
     private coll(): Collection<FieldReportOutboxRecord> {
-        return this.getDb().collection<FieldReportOutboxRecord>(this.collectionName);
+        return this.getDb().collection<FieldReportOutboxRecord>(this.collectionName, bookkeepingOptions());
     }
 
     async ensureIndexes(): Promise<void> {
@@ -98,7 +100,23 @@ export class MongoFieldReportOutbox implements FieldReportStore {
         };
 
         try {
-            await this.coll().insertOne(record);
+            const storeSpan = startChildSpan('store accept field report', input.traceparent, 'CLIENT', { hazard_id: hazardEvent.hazard_id, 'x-correlation-id': input.correlationId });
+            try {
+                try {
+                    await this.coll().insertOne(record);
+                } catch (first) {
+                    // A write concern timeout means one copy is stored and the second member did not confirm in time (a store member is gone). Enter the
+                    // degraded mode (w:1, acknowledged as single copy, the same rule as the other bookkeeping writes) and store again: the document is
+                    // either already there (duplicate key, answered below as accepted) or written now. Waiting 1.5 s and answering 503 for every report
+                    // until the member is back was measured during a real node loss.
+                    if (!noteBookkeepingFailure(first)) throw first;
+                    await this.coll().insertOne(record);
+                }
+                storeSpan.end(true);
+            } catch (e) {
+                storeSpan.end(!isDupKey(e), { duplicate: isDupKey(e) ? 1 : 0 });
+                throw e;
+            }
             return { status: 202, report_id: record.report_id, hazard_id: hazardEvent.hazard_id, duplicate: false };
         } catch (err) {
             if (isDupKey(err)) {

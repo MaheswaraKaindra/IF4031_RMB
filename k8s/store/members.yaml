@@ -35,7 +35,7 @@ spec:
       securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -45,7 +45,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--configsvr", "--port", "27017", "--replSet", "cfg", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25", "--oplogSize", "256"]
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
@@ -53,14 +53,14 @@ spec:
           env:
             - {name: HOME, value: /tmp}
           securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
-          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongo --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: _getEnv('MONGO_INITDB_ROOT_USERNAME'), pwd: _getEnv('MONGO_INITDB_ROOT_PASSWORD'), roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -120,7 +120,7 @@ spec:
       securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -130,7 +130,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--configsvr", "--port", "27017", "--replSet", "cfg", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25", "--oplogSize", "256"]
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
@@ -138,14 +138,14 @@ spec:
           env:
             - {name: HOME, value: /tmp}
           securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
-          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongo --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: _getEnv('MONGO_INITDB_ROOT_USERNAME'), pwd: _getEnv('MONGO_INITDB_ROOT_PASSWORD'), roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -205,7 +205,7 @@ spec:
       securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -215,7 +215,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--configsvr", "--port", "27017", "--replSet", "cfg", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25", "--oplogSize", "256"]
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
@@ -223,14 +223,14 @@ spec:
           env:
             - {name: HOME, value: /tmp}
           securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
-          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongo --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: _getEnv('MONGO_INITDB_ROOT_USERNAME'), pwd: _getEnv('MONGO_INITDB_ROOT_PASSWORD'), roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -290,7 +290,7 @@ spec:
       securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -300,7 +300,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--shardsvr", "--port", "27017", "--replSet", "shard-1", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25", "--oplogSize", "256"]
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
@@ -308,14 +308,14 @@ spec:
           env:
             - {name: HOME, value: /tmp}
           securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
-          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongo --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: _getEnv('MONGO_INITDB_ROOT_USERNAME'), pwd: _getEnv('MONGO_INITDB_ROOT_PASSWORD'), roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -375,7 +375,7 @@ spec:
       securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -385,7 +385,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--shardsvr", "--port", "27017", "--replSet", "shard-1", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25", "--oplogSize", "256"]
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
@@ -393,14 +393,14 @@ spec:
           env:
             - {name: HOME, value: /tmp}
           securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
-          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongo --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: _getEnv('MONGO_INITDB_ROOT_USERNAME'), pwd: _getEnv('MONGO_INITDB_ROOT_PASSWORD'), roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -459,7 +459,7 @@ spec:
       nodeSelector: {bnpb.io/store-slot: "3"}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -469,7 +469,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--shardsvr", "--port", "27017", "--replSet", "shard-1", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25"]
           ports: [{name: mongo, containerPort: 27017}]
           resources:
@@ -478,7 +478,7 @@ spec:
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -538,7 +538,7 @@ spec:
       securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -548,7 +548,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--shardsvr", "--port", "27017", "--replSet", "shard-2", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25", "--oplogSize", "256"]
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
@@ -556,14 +556,14 @@ spec:
           env:
             - {name: HOME, value: /tmp}
           securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
-          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongo --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: _getEnv('MONGO_INITDB_ROOT_USERNAME'), pwd: _getEnv('MONGO_INITDB_ROOT_PASSWORD'), roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -623,7 +623,7 @@ spec:
       securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -633,7 +633,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--shardsvr", "--port", "27017", "--replSet", "shard-2", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25", "--oplogSize", "256"]
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
@@ -641,14 +641,14 @@ spec:
           env:
             - {name: HOME, value: /tmp}
           securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
-          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongo --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: _getEnv('MONGO_INITDB_ROOT_USERNAME'), pwd: _getEnv('MONGO_INITDB_ROOT_PASSWORD'), roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -707,7 +707,7 @@ spec:
       nodeSelector: {bnpb.io/store-slot: "1"}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -717,7 +717,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--shardsvr", "--port", "27017", "--replSet", "shard-2", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25"]
           ports: [{name: mongo, containerPort: 27017}]
           resources:
@@ -726,7 +726,7 @@ spec:
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -786,7 +786,7 @@ spec:
       securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -796,7 +796,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--shardsvr", "--port", "27017", "--replSet", "shard-3", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25", "--oplogSize", "256"]
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
@@ -804,14 +804,14 @@ spec:
           env:
             - {name: HOME, value: /tmp}
           securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
-          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongo --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: _getEnv('MONGO_INITDB_ROOT_USERNAME'), pwd: _getEnv('MONGO_INITDB_ROOT_PASSWORD'), roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -871,7 +871,7 @@ spec:
       securityContext: {fsGroup: 999}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -881,7 +881,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--shardsvr", "--port", "27017", "--replSet", "shard-3", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25", "--oplogSize", "256"]
           ports: [{name: mongo, containerPort: 27017}]
           envFrom:
@@ -889,14 +889,14 @@ spec:
           env:
             - {name: HOME, value: /tmp}
           securityContext: {runAsUser: 999, runAsGroup: 999, allowPrivilegeEscalation: false}
-          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongosh --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: process.env.MONGO_INITDB_ROOT_USERNAME, pwd: process.env.MONGO_INITDB_ROOT_PASSWORD, roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
+          command: ["bash", "-c", "set -e\nDB=/data/db\nif [ ! -f $DB/.bnpb-root-user ]; then\n  mongod --dbpath $DB --bind_ip 127.0.0.1 --port 27017 --wiredTigerCacheSizeGB 0.25 --fork --logpath /tmp/init.log >/dev/null\n  mongo --quiet --port 27017 --eval \"try { db.getSiblingDB('admin').createUser({user: _getEnv('MONGO_INITDB_ROOT_USERNAME'), pwd: _getEnv('MONGO_INITDB_ROOT_PASSWORD'), roles: [{role: 'root', db: 'admin'}]}) } catch (e) { if (e.code !== 51003) throw e }\"\n  mongod --dbpath $DB --shutdown >/dev/null\n  touch $DB/.bnpb-root-user\nfi\nexec mongod --dbpath $DB \"$@\"", "--"]
           resources:
             requests: {memory: 512Mi}
             limits: {memory: 1Gi}
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5
@@ -955,7 +955,7 @@ spec:
       nodeSelector: {bnpb.io/store-slot: "2"}
       initContainers:
         - name: copy-keyfile   # mongod requires the keyfile to be owned by mongodb with mode 0400
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           command: ["sh", "-c", "cp /keyfile-src/keyfile /keyfile/keyfile && chown 999:999 /keyfile/keyfile && chmod 400 /keyfile/keyfile"]
           resources:
             requests: {memory: 512Mi}
@@ -965,7 +965,7 @@ spec:
             - {name: keyfile, mountPath: /keyfile}
       containers:
         - name: mongod
-          image: docker.io/library/mongo:7
+          image: docker.io/library/mongo:4.4
           args: ["--shardsvr", "--port", "27017", "--replSet", "shard-3", "--bind_ip_all", "--keyFile", "/keyfile/keyfile", "--wiredTigerCacheSizeGB", "0.25"]
           ports: [{name: mongo, containerPort: 27017}]
           resources:
@@ -974,7 +974,7 @@ spec:
           volumeMounts:
             - {name: data, mountPath: /data/db}
             - {name: keyfile, mountPath: /keyfile}
-          # TCP probes on purpose: an exec'd mongosh would run inside this container's 1Gi limit.
+          # TCP probes on purpose: an exec'd mongo shell would run inside this container's 1Gi limit.
           startupProbe:
             tcpSocket: {port: mongo}
             periodSeconds: 5

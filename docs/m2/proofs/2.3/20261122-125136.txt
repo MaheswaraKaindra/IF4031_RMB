@@ -1,0 +1,37 @@
+# proof: 2.3
+# date: 2026-11-22T12:51:36+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p2-failover.sh
+# artificial case: none
+
+leader of aggregator-poller-bmkg: aggregator-5f74dccb5f-2hg8r on node-c
+leases led from node-c (they must move): aggregator-poller-bmkg aggregator-poller-pvmbg aggregator-satellite aggregator-coastal
+WARN: mock-pvmbg runs on node-c; its logs vanish with the node, so the poll-gap check is skipped for it
+records before: 179173
+>>> powering off node-c
+0%...10%...20%...30%...40%...50%...60%...70%...80%...90%...100%
+aggregator-coastal: new holder aggregator-5f74dccb5f-sx7vv after 15.8 s
+aggregator-poller-bmkg: new holder aggregator-5f74dccb5f-bf6c2 after 21.0 s
+aggregator-poller-pvmbg: new holder aggregator-5f74dccb5f-bf6c2 after 21.6 s
+aggregator-satellite: new holder aggregator-5f74dccb5f-bf6c2 after 22.1 s
+PASS: aggregator-poller-bmkg: another instance took over after 21.0 s (limit 60 s)
+PASS: aggregator-poller-pvmbg: another instance took over after 21.6 s (limit 60 s)
+PASS: aggregator-satellite: another instance took over after 22.1 s (limit 60 s)
+PASS: aggregator-coastal: another instance took over after 15.8 s (limit 60 s)
+>>> letting the system settle for 60s
+PASS: aggregator-poller-bmkg: 1 leadership change(s) after the loss (a stable takeover needs 1; 2 is the observed worst case)
+     final holder: aggregator-5f74dccb5f-bf6c2 on node-a
+PASS: aggregator-poller-pvmbg: 1 leadership change(s) after the loss (a stable takeover needs 1; 2 is the observed worst case)
+     final holder: aggregator-5f74dccb5f-bf6c2 on node-a
+PASS: aggregator-satellite: 1 leadership change(s) after the loss (a stable takeover needs 1; 2 is the observed worst case)
+     final holder: aggregator-5f74dccb5f-bf6c2 on node-a
+PASS: aggregator-coastal: 1 leadership change(s) after the loss (a stable takeover needs 1; 2 is the observed worst case)
+     final holder: aggregator-5f74dccb5f-sx7vv on node-d
+PASS: mock-bmkg: longest pause between upstream polls was 3.1 s (<= 60 s)
+     distinct callers since the loss: 1 (old leader until it died, then the new one)
+PASS: no duplicate HazardEvent after the failover
+PASS: no record stored before the loss went missing
+PASS: every event the BMKG mock produced since the loss (12) is stored: no gap
+ALL CHECKS PASSED
+>>> starting node-c again
+# exit code: 0

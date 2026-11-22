@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import https from 'node:https';
 import type { Collection, Db, Document } from 'mongodb';
+import { bookkeepingOptions } from '../storage/health.js';
 
 export interface LeaseResult {
     acquired: boolean;
@@ -44,12 +45,34 @@ export interface KubernetesLeaseOptions {
     tokenPath?: string | undefined;
     caPath?: string | undefined;
     requestTimeoutMs?: number | undefined;
+    observer?: LeaseObserver | undefined;
 }
 
 /**
  * Kubernetes coordination.k8s.io/v1 Lease client using the API server HTTP Date header
  * as the single authoritative clock so local node wall-clock skew cannot forge or steal leases.
  */
+/**
+ * Decides whether a lease has expired WITHOUT comparing wall clocks. A lease is expired when this process has not seen the
+ * lease object change for its whole duration, measured with this process's own monotonic clock (the rule client-go's leader
+ * election uses). Comparing the lease's renewTime with an API server's `Date` header is unsafe here: every k3s node runs an
+ * API server and the in-cluster Service reaches any of them, so one node with a drifted clock (+45 s, -30 s) gives different
+ * instances different ideas of "now" and makes leadership flap (measured: 10 leadership changes in 3 minutes).
+ * A lease with no holder is expired at once (a clean release hands over immediately).
+ */
+export class LeaseObserver {
+    private readonly seen = new Map<string, { key: string; at: number }>();
+    constructor(private readonly nowMono: () => number = () => performance.now()) {}
+
+    isExpired(leaseName: string, key: string, hasHolder: boolean, durationMs: number): boolean {
+        const now = this.nowMono();
+        const cur = this.seen.get(leaseName);
+        if (!cur || cur.key !== key) this.seen.set(leaseName, { key, at: now });
+        if (!hasHolder) return true;
+        return now - (this.seen.get(leaseName)?.at ?? now) > durationMs;
+    }
+}
+
 export class KubernetesLeaseProvider implements ILeaseProvider {
     private readonly namespace: string;
     private readonly host: string;
@@ -57,6 +80,7 @@ export class KubernetesLeaseProvider implements ILeaseProvider {
     private readonly tokenPath: string;
     private readonly ca: Buffer;
     private readonly timeoutMs: number;
+    private readonly observer: LeaseObserver;
 
     constructor(opts: KubernetesLeaseOptions = {}) {
         this.namespace =
@@ -68,6 +92,7 @@ export class KubernetesLeaseProvider implements ILeaseProvider {
         this.tokenPath = opts.tokenPath ?? '/var/run/secrets/kubernetes.io/serviceaccount/token';
         this.ca = readFileSync(opts.caPath ?? '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt');
         this.timeoutMs = opts.requestTimeoutMs ?? 3000;
+        this.observer = opts.observer ?? new LeaseObserver();
     }
 
     private request<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T; serverNowMs: number }> {
@@ -156,7 +181,13 @@ export class KubernetesLeaseProvider implements ILeaseProvider {
         const currentHolder = spec.holderIdentity ?? null;
         const existingDurationMs = (spec.leaseDurationSeconds ?? durationSec) * 1000;
         const existingRenewMs = spec.renewTime ? Date.parse(spec.renewTime) : Number.NaN;
-        const expired = Number.isNaN(existingRenewMs) || got.serverNowMs - existingRenewMs > existingDurationMs;
+        // Expiry from what THIS process has observed (monotonic), never from the difference of two wall clocks.
+        const expired = this.observer.isExpired(
+            leaseName,
+            `${currentHolder ?? ''}|${spec.renewTime ?? ''}|${existing.metadata.resourceVersion ?? ''}`,
+            Boolean(currentHolder),
+            existingDurationMs,
+        );
 
         if (currentHolder && currentHolder !== identity && !expired) {
             return {
@@ -234,7 +265,7 @@ export class MongoLeaseProvider implements ILeaseProvider {
     constructor(private readonly getDb: () => Db, private readonly collectionName = 'coordination_leases') {}
 
     private coll(): Collection<MongoLeaseDoc> {
-        return this.getDb().collection<MongoLeaseDoc>(this.collectionName);
+        return this.getDb().collection<MongoLeaseDoc>(this.collectionName, bookkeepingOptions());
     }
 
     private async serverNowMs(): Promise<number> {

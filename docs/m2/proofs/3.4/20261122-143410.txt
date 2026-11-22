@@ -1,0 +1,26 @@
+# proof: 3.4
+# date: 2026-11-22T14:34:10+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p3-order.sh
+# artificial case: several versions of one report are put in the parked inbox directly (the mock cannot serve several versions)
+
+>>> parking the versions
+{"parked":"msg-9acfd6dc8fb2","version":2,"level":"Awas","duplicate":false}
+{"parked":"msg-9b1c3c97819b","version":1,"level":"Waspada","duplicate":false}
+{"parked":"msg-4c5117fec32c","version":2,"level":"Awas","duplicate":false}
+{"parked":"msg-88d16aa6d75e","version":1,"level":"unknown-level","duplicate":false}
+>>> replay (PVMBG)
+{"scanned":50,"recovered":2,"blocked_by_key":26,"still_failed":22}
+key A:
+{"message_id":"msg-9b1c3c97819b","status":"processed","received_at":"2026-11-22T07:33:12.467Z","processed_at":"2026-11-22T07:34:17.855Z","reason":"schema_incompatible: missing or renamed required field 'volcano_id'"}
+{"message_id":"msg-9acfd6dc8fb2","status":"processed","received_at":"2026-11-22T07:33:13.467Z","processed_at":"2026-11-22T07:34:17.933Z","reason":"schema_incompatible: missing or renamed required field 'volcano_id'"}
+key B:
+{"message_id":"msg-88d16aa6d75e","status":"parked","received_at":"2026-11-22T07:33:13.933Z","processed_at":null,"reason":"schema_incompatible: field 'alert_level' missing or invalid (string: unknown-level)"}
+{"message_id":"msg-4c5117fec32c","status":"parked","received_at":"2026-11-22T07:33:14.933Z","processed_at":null,"reason":"schema_incompatible: missing or renamed required field 'volcano_id'"}
+PASS: key A: both versions recovered
+PASS: key A: version 1 was applied before version 2 (processed_at order = received order, although v2 was stored first)
+PASS: key A: exactly one stored event, with the newer level (AWAS)
+PASS: key B: the unreadable first version blocks the later one (nothing processed, no event stored)
+PASS: replay reported blocked_by_key=26
+ALL CHECKS PASSED
+# exit code: 0

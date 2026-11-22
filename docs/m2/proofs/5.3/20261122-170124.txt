@@ -1,0 +1,24 @@
+# proof: 5.3
+# date: 2026-11-22T17:01:24+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p5-m1-load.sh
+# artificial case: the M1 workload is scaled down to 4 users (2 SEISMIC + 2 VOLCANIC; the VMs serve about 45-50 req/s of /events with no think time, so latency is about users / 45 s; at 6 users the p95 was 235-321 ms, at the edge of 300 ms, with a healthy sensor too)
+
+>>> mode: normal
+     http_req_duration..........................: avg=92.15ms  min=143.55µs med=81.64ms  p(90)=142.68ms p(95)=171.35ms p(99)=238.33ms max=447.95ms
+   ✓ http_req_failed............................: 0.00%   0 out of 2583
+     iterations.................................: 2575    44.395298/s
+PASS: normal: M1 workload SEISMIC p95 168.92959499999986 ms (< 300 ms), failed 0
+>>> mode: slow
+     http_req_duration..........................: avg=87.63ms  min=109.43µs med=79.32ms  p(90)=131.55ms p(95)=153.47ms p(99)=215.74ms max=382.89ms
+   ✓ http_req_failed............................: 0.00%   0 out of 2721
+     iterations.................................: 2713    46.790562/s
+PASS: slow: M1 workload SEISMIC p95 154.5283677 ms (< 300 ms), failed 0
+>>> mode: blackhole
+     http_req_duration..........................: avg=77.69ms  min=147.9µs med=70.65ms  p(90)=113.27ms p(95)=133.4ms  p(99)=184.89ms max=280.67ms
+   ✓ http_req_failed............................: 0.00%   0 out of 3076
+     iterations.................................: 3068    51.935674/s
+PASS: blackhole: M1 workload SEISMIC p95 132.81888579999998 ms (< 300 ms), failed 0
+ALL CHECKS PASSED
+>>> restoring the aggregator's sensor URL (http://sensor-pantai:8080) and removing the fake sensor
+# exit code: 0

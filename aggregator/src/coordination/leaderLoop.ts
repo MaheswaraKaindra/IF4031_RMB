@@ -1,4 +1,5 @@
 import type { Logger } from 'pino';
+import { noteBookkeepingFailure } from '../storage/health.js';
 import type { ISourceFenceStore } from './fencing.js';
 import type { ILeaseProvider } from './lease.js';
 
@@ -141,6 +142,7 @@ export class SourceLeaderManager {
             }
             return true;
         } catch (err) {
+            noteBookkeepingFailure(err);
             this.opts.logger.warn(
                 { source: this.opts.source, error: err instanceof Error ? err.message : String(err) },
                 'lease renew failed'

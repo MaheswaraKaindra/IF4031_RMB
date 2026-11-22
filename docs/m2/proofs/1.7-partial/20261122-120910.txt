@@ -1,0 +1,16 @@
+# proof: 1.7-partial
+# date: 2026-11-22T12:09:10+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p1-unit-loss.sh 1
+# artificial case: a whole shard is made unreachable for 5 minutes, its data stays on disk
+
+before: 178369 records
+>>> stopping both data members of shard-1: mongo-s1-a mongo-s1-b 
+while shard-1 was unreachable: partial audit=28 checksum=29 analytics=29 client-api=29 | answers not marked partial=0 | bad=0
+>>> restoring shard-1
+PASS: unreachable unit reported explicitly (partial:true, unavailable_units has shard-1)
+PASS: analytics flagged incomplete (dashboard shows the warning banner)
+PASS: no 5xx / hung request
+PASS: all records back after restore (lost=0)
+also open http://<node>:30000/analytics during the outage to screenshot the banner (re-run with DOWN_SECONDS=300)
+# exit code: 0

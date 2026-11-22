@@ -28,7 +28,7 @@ roleRef:
   name: aggregator-lease-role
 ---
 # Secret aggregator-secret (X_BMKG_KEY, PVMBG_TOKEN, MONGO_URI, RABBITMQ_URL) is created by
-# scripts/k8s/create-secrets.sh.
+# scripts/m2/create-secrets.sh.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -83,6 +83,8 @@ spec:
               valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
             - name: NODE_NAME
               valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: PANTAI_AUTH_TOKEN
+              valueFrom: {secretKeyRef: {name: pantai-token, key: token, optional: true}}
           envFrom:
             - configMapRef: {name: aggregator-config}
             - secretRef: {name: aggregator-secret}
@@ -115,6 +117,18 @@ metadata:
   name: aggregator
   labels: {app.kubernetes.io/name: aggregator, role: aggregator}
 spec:
+  selector: {app.kubernetes.io/name: aggregator}
+  ports: [{name: http, port: 3000, targetPort: http}]
+---
+# Receipt acknowledgements from the Tim Lapangan receiver. Reaches the pods even while readiness fails (store outage), so the
+# receiver does not lose its target for the seconds a probe needs to pass again. The endpoint itself answers 503 until its store is back.
+apiVersion: v1
+kind: Service
+metadata:
+  name: aggregator-ack
+  labels: {app.kubernetes.io/name: aggregator, role: aggregator}
+spec:
+  publishNotReadyAddresses: true
   selector: {app.kubernetes.io/name: aggregator}
   ports: [{name: http, port: 3000, targetPort: http}]
 ---

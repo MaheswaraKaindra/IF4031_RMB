@@ -2,6 +2,8 @@
 //   kubectl -n <ns> exec deploy/aggregator -- node dist/tools/store-tool.js <cmd> [--flag value]
 //
 //   load   --count N [--seed S] [--days D]   synthetic, geographically skewed catalog (idempotent for the same seed)
+//   load   --catalog file.jsonl|file.csv      load a real or generated earthquake catalog through the BMKG mapping and the normal ingest path
+//   catalog-gen --count N [--seed S] [--days D] [--out file.jsonl]   simulated catalog with Gutenberg-Richter magnitudes, aftershock bursts and hot zones
 //   burst  --region sumatra --count N        write surge concentrated in ONE region, reports per-node write deltas
 //   report                                   per-node record counts + write counters, plus checksum per source
 //   checksum [--source BMKG]                 count + Appendix A checksum
@@ -9,6 +11,8 @@
 import { MongoClient } from 'mongodb';
 import { MongoCanonicalRepository } from '../storage/mongoRepository.js';
 import { loadTopology } from '../storage/topology.js';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { concentration, generateCatalog, parseCatalog, rowToHazard } from './catalog.js';
 import type { HazardRecord, HazardType, Severity, Source } from '../storage/types.js';
 
 interface Region { name: string; weight: number; lat: number; lon: number; spread: number }
@@ -87,7 +91,31 @@ async function main(): Promise<void> {
     const out = (o: unknown): void => console.log(JSON.stringify(o));
 
     try {
-        if (cmd === 'load' || cmd === 'burst') {
+        if (cmd === 'catalog-gen') {
+            const rows = generateCatalog({ count: Number(arg('count', '50000')), seed: Number(arg('seed', '42')), days: Number(arg('days', '365')) });
+            const file = arg('out');
+            if (file) writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+            else rows.forEach((r) => console.log(JSON.stringify(r)));
+            console.error(JSON.stringify({ catalog: concentration(rows) }));
+        } else if (cmd === 'load' && arg('catalog')) {
+            const rows = parseCatalog(readFileSync(arg('catalog')!, 'utf8'));
+            const before = await repo.distribution();
+            const t0 = performance.now();
+            const tally: Record<string, number> = {};
+            const perRegion: Record<string, number> = {};
+            await pool(rows, 32, async (row) => {
+                const res = await repo.ingest({ event: rowToHazard(row) });
+                tally[res.outcome] = (tally[res.outcome] ?? 0) + 1;
+                perRegion[row.region_name] = (perRegion[row.region_name] ?? 0) + 1;
+            });
+            const secs = (performance.now() - t0) / 1000;
+            const after = await repo.distribution();
+            out({ cmd: 'load-catalog', count: rows.length, seconds: +secs.toFixed(2), writes_per_s: Math.round(rows.length / secs), outcomes: tally, input_by_region: perRegion, concentration: concentration(rows) });
+            for (const a of after) {
+                const b = before.find((x) => x.member === a.member);
+                out({ member: a.member, node: a.node, unit: a.unit, role: a.role, count: a.count, insert_delta: a.inserts !== null && b?.inserts != null ? a.inserts - b.inserts : null, update_delta: a.updates !== null && b?.updates != null ? a.updates - b.updates : null });
+            }
+        } else if (cmd === 'load' || cmd === 'burst') {
             const count = Number(arg('count', '10000'));
             const seed = Number(arg('seed', '42'));
             const days = Number(arg('days', '30'));
@@ -123,7 +151,7 @@ async function main(): Promise<void> {
         } else if (cmd === 'checksum') {
             out(await repo.checksum(arg('source') as Source | undefined));
         } else {
-            throw new Error('usage: store-tool <load|burst|report|checksum> [--count N] [--seed S] [--days D] [--region R] [--source S]');
+            throw new Error('usage: store-tool <load|burst|catalog-gen|report|checksum> [--count N] [--seed S] [--days D] [--region R] [--source S]');
         }
     } finally {
         await repo.close();

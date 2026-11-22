@@ -1,4 +1,4 @@
-export type PolledSourceName = 'BMKG' | 'PVMBG';
+export type PolledSourceName = 'BMKG' | 'PVMBG' | 'SENSOR_PANTAI';
 export type SourceName = PolledSourceName | 'SATELIT' | 'SENSOR_PANTAI' | 'FIELD_REPORT';
 
 export interface HazardEvent {

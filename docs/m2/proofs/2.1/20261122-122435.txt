@@ -1,0 +1,24 @@
+# proof: 2.1
+# date: 2026-11-22T12:24:35+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: bash /home/nathanieljr/repos-wsl/IF4031_RMB/scripts/m2/proof.sh _pods
+# artificial case: none
+
+ready aggregator pods: 5 on 3 distinct node(s) (cluster has 3)
+PASS: >= 3 aggregator instances Ready
+PASS: instances spread over 3 different nodes
+PASS: readiness probe on /health (unhealthy instances leave the Service)
+PASS: Service aggregator routes to 5 Ready pods
+PASS: Service aggregator-ack routes to 5 Ready pods
+PASS: Service aggregator-audit routes to 5 Ready pods
+PASS: Service aggregator-external routes to 5 Ready pods
+PASS: 30/30 requests through NodePort 30000 answered 200
+ALL CHECKS PASSED
+
+NAME                          READY   STATUS    RESTARTS      AGE     IP           NODE     NOMINATED NODE   READINESS GATES
+aggregator-5986bd9d8f-4246j   1/1     Running   0             3m12s   10.42.3.96   node-d   <none>           <none>
+aggregator-5986bd9d8f-4sk5m   1/1     Running   1 (86m ago)   9h      10.42.0.44   node-a   <none>           <none>
+aggregator-5986bd9d8f-5mkvc   1/1     Running   0             3m27s   10.42.0.70   node-a   <none>           <none>
+aggregator-5986bd9d8f-7vx4q   1/1     Running   1 (85m ago)   9h      10.42.3.68   node-d   <none>           <none>
+aggregator-5986bd9d8f-fn856   1/1     Running   0             84m     10.42.2.17   node-c   <none>           <none>
+# exit code: 0
