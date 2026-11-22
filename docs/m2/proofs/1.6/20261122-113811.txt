@@ -1,0 +1,33 @@
+# proof: 1.6
+# date: 2026-11-22T11:38:11+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p1-node-loss.sh 2
+# artificial case: the second node loss is simulated the same way (slot 2) after slot 3 has re-synced
+
+>>> precondition: redundancy intact (needed to survive the NEXT loss, criterion 6)
+before: 177780 records
+{"source":"BMKG","count":69387,"checksum":"146ec93f88eed6fcbd8e0b56c9f81eb7ef38dcbd2236ca329acfd705fb431437","partial":false}
+{"source":"PVMBG","count":8399,"checksum":"b2532afb67deb919550d00e257d3a1caed40432255f842e381b2cc07629a0880","partial":false}
+{"source":"SATELIT","count":31193,"checksum":"ebde658bd059e6cf6b4a87d865631025bc8160246b9968e33762b5c5016dcd6b","partial":false}
+{"source":"SENSOR_PANTAI","count":66475,"checksum":"37b9272caf9d09e6ec3657ce90a6581d02b246d96ccb88f9e21794d9259ec7f4","partial":false}
+pre-loss ID list saved to /tmp/p1-ids-before-slot2.txt (input for p1-replace-node.sh if the node never returns)
+>>> simulating permanent loss of slot 2: mongo-cfg-2 mongo-s1-b mongo-s2-a mongo-s3-arb 
+>>> node gone; monitoring for 45s before the replacement (empty disk) joins
+member mongo-cfg-2 restarted on a fresh, empty volume (pvc uid 6c73b8b0-3e18-4a06-b11b-eddbade3df84 -> 5bee4d0e-4cc7-476b-9188-fceee18d2302)
+member mongo-s1-b restarted on a fresh, empty volume (pvc uid 4cf06978-6f1a-4ab1-850f-b2df64f94978 -> 28e95d2f-e9a7-4057-aa47-84688fe97570)
+member mongo-s2-a restarted on a fresh, empty volume (pvc uid 91fb367b-63d8-4054-8ce2-45e0731ca9bf -> 2b2dc934-0f12-4f9d-aecc-7589c3ccd203)
+member mongo-s3-arb restarted on a fresh, empty volume (pvc uid 1985bc32-2a7d-4ea3-a60a-597c5f9fe509 -> efdd91d7-b5c0-4571-afd9-61a6be1cd505)
+>>> replacement joined with empty disks; monitoring until MONITOR_SECONDS=150s
+answers: audit/analytics complete=51 explicit_partial=0 | client-api ok=17 slow(>2s)=0 | bad=0
+>>> waiting for re-sync / redundancy (up to 20 min)
+redundancy restored: [{"unit":"shard-1","counts":[59226,59226]},{"unit":"shard-2","counts":[59273,59273]},{"unit":"shard-3","counts":[59339,59339]}]
+records before=177780 after=177853 lost=0
+after (evidence; counts may be higher because ingestion continued):
+{"source":"BMKG","count":69416,"checksum":"c4546efba30e849963c28a902128ac86161f651f3ca4c82b92944ee80c7670b6","partial":false}
+{"source":"PVMBG","count":8428,"checksum":"143a8bd3c8a4e3ae8a8e88ff6532f1c68cc55775d9d678e00a9d5e467d353ff0","partial":false}
+{"source":"SATELIT","count":31208,"checksum":"b275f4463c7b89a931e81b3641b526d0bf9a8d6202697756a14b29bcc1d44cb7","partial":false}
+{"source":"SENSOR_PANTAI","count":66475,"checksum":"37b9272caf9d09e6ec3657ce90a6581d02b246d96ccb88f9e21794d9259ec7f4","partial":false}
+PASS: no HazardEvent lost (every pre-loss record is still stored)
+PASS: no 5xx / hung request during the loss and recovery
+next: run again with a DIFFERENT slot to prove the system survives the next loss (criterion 6)
+# exit code: 0

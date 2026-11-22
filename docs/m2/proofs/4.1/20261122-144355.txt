@@ -1,0 +1,31 @@
+# proof: 4.1
+# date: 2026-11-22T14:43:55+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: bash /home/nathanieljr/repos-wsl/IF4031_RMB/scripts/m2/proof.sh _reference
+# artificial case: our own independent recomputation from the feed log (the assistants' reference is released after the deadline)
+
+{
+  "ok": true,
+  "committed_offset": 1941252,
+  "log_tail": 1944954,
+  "reference_fires": 30489,
+  "stored_fires": 30489,
+  "other_satelit_records_ignored": 2025,
+  "in_flight_skipped": 62,
+  "reference_counters": {
+    "detections_kept": 1647896,
+    "low_confidence": 205098,
+    "singletons": 193459,
+    "late": 0,
+    "retracted": 38881,
+    "invalid": 0,
+    "unknown_corrections": 1773
+  },
+  "missing": [],
+  "missing_total": 0,
+  "extra": [],
+  "extra_total": 0,
+  "different": [],
+  "different_total": 0
+}
+# exit code: 0

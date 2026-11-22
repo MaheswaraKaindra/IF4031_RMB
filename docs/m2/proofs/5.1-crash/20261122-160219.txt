@@ -1,0 +1,29 @@
+# proof: 5.1-crash
+# date: 2026-11-22T16:02:19+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p5-latency.sh
+# artificial case: the coastal leader process is killed (SIGKILL), the node stays up
+
+coastal leader: aggregator-6768dc4cd8-w2dxd on node-a; scenario: kill-leader
+>>> killing the coastal leader process (aggregator-6768dc4cd8-w2dxd) with SIGKILL from its node (no lease release, no cleanup)
+{"run":"mwrm1sos","emitted":400,"skipped":0,"clock_offset_start_ms":-506.5,"clock_offset_end_ms":-84.5}
+>>> waiting for the last alerts to be delivered (up to 240 s)
+time from the end of emission until every alert was delivered, or until we gave up: 21 s
+{
+  "emitted": 400,
+  "delivered": 400,
+  "not_in_ledger": 0,
+  "not_delivered": 0,
+  "within_deadline": 384,
+  "deadline_ms": 5000,
+  "deadline_misses": 16,
+  "p50_ms": 797,
+  "p95_ms": 4447,
+  "max_ms": 7127,
+  "clock_offset_ms": -295
+}
+PASS: kill-leader: 0 critical alerts lost (400 of 400 delivered)
+PASS: kill-leader: p95 from emission = 4447 ms (deadline 5000 ms), 16 alert(s) over the deadline
+ALL CHECKS PASSED
+>>> restoring the aggregator's sensor URL (http://sensor-pantai:8080) and removing the fake sensor
+# exit code: 0

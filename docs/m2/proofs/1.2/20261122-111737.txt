@@ -1,0 +1,17 @@
+# proof: 1.2
+# date: 2026-11-22T11:17:37+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p1-hotspot.sh 20000 sumatra
+# artificial case: simulated catalog and a simulated regional burst (20,000 writes in Sumatera Barat)
+
+>>> burst of 20000 writes, all in region 'sumatra' (the hottest region of the dataset)
+{"cmd":"burst","count":20000,"seconds":63.21,"writes_per_s":316,"outcomes":{"applied":20000},"input_by_region":{"Sumatera Barat":20000}}
+node-a  shard-1  mongo-s1-a  primary    writes+8284  count=58892
+node-a  shard-3  mongo-s3-b  secondary  writes+0     count=59040
+node-c  shard-2  mongo-s2-b  secondary  writes+0     count=58949
+node-c  shard-3  mongo-s3-a  primary    writes+6941  count=59040
+node-d  shard-1  mongo-s1-b  secondary  writes+0     count=58892
+node-d  shard-2  mongo-s2-a  primary    writes+6983  count=58949
+primary write-load max/min ratio: 1.1934879700331364 (1.0 = perfectly even; 999 = a primary saw no writes or no data)
+PASS: hot region spread over shards (ratio < 2)
+# exit code: 0

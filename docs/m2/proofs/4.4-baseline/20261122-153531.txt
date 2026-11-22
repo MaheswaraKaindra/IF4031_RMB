@@ -1,0 +1,13 @@
+# proof: 4.4-baseline
+# date: 2026-11-22T15:35:31+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p4-checks.sh
+# artificial case: none
+
+>>> baseline: is the pipeline running and caught up?
+     leader aggregator-6f489f694d-cwshw on node-c, committed offset 1970578, feed latest 1970563
+PASS: the pipeline is caught up with the feed (lag <= 200 frames)
+PASS: 111 active fires in the store's working set
+     ingest-to-store p95 over a 45 s window: <= 0.25 s (147 frames)
+ALL CHECKS PASSED
+# exit code: 0

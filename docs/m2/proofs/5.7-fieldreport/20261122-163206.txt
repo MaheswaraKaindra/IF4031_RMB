@@ -1,0 +1,19 @@
+# proof: 5.7-fieldreport
+# date: 2026-11-22T16:32:06+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: bash /home/nathanieljr/repos-wsl/IF4031_RMB/scripts/m2/proof.sh _trace
+# artificial case: none
+
+correlation id: proof-1795339930   traceparent: 00-0837bb865c9624025bd2abeaf8ed8964-ec1b7f698f09987d-01
+trace 0837bb865c9624025bd2abeaf8ed8964 - 9 spans
+  start ms     dur ms  service            span                                 parent
+       0.0       85.0  client-api         POST /field-reports/                 -
+      20.0       54.0  aggregator         POST /internal/field-reports         POST /field-reports/
+      22.0       49.0  aggregator         store accept field report            POST /internal/field-reports
+     176.0       24.0  aggregator         broker publish field report          POST /internal/field-reports
+     179.0        1.0  consumer-notifier  consume q_field_notifier             broker publish field report
+     179.0        1.0  consumer-dashboard consume q_dashboard_updater          broker publish field report
+     182.0        1.0  consumer-portal    consume q_regional_portal            broker publish field report
+     198.0       39.0  consumer-notifier  consume q_critical_alerts_v2         broker publish field report
+     209.0       24.0  aggregator         POST /internal/deliveries/ack        broker publish field report
+# exit code: 0

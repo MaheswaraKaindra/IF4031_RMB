@@ -1,0 +1,22 @@
+# proof: 2.4
+# date: 2026-11-22T12:57:03+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p2-clock-skew.sh
+# artificial case: none
+
+leader of aggregator-poller-bmkg: aggregator-5f74dccb5f-bf6c2 on node-a (its node's clock will be shifted)
+>>> clock +45 s for 60s
+>>> clock -30 s (relative to real time) for 60s
+>>> clock restored
+>>> clock +45 s on node-c (not the leader of aggregator-poller-bmkg) for 60s
+PASS: a drifting FOLLOWER clock caused at most one leadership change (0)
+PASS: clock changes on BMKG: 95 sampling rounds saw a valid leader (at least 30 needed)
+PASS: clock changes on BMKG: never two valid leaders in the same round
+leadership changes during the test: 0
+PASS: upstream saw 0 caller change(s) for 0 leadership change(s): no interleaved callers
+PASS: no duplicate HazardEvent after the clock changes
+PASS: every one of the 25 events the BMKG mock produced during the test is stored: no gap under clock shifts
+fenced/stale-epoch rejections logged: 0
+PASS: the drifting leader clock caused 0 leadership change(s) (before the monotonic-clock fix it caused 10 in 3 minutes)
+ALL CHECKS PASSED
+# exit code: 0

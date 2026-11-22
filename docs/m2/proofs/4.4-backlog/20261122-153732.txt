@@ -1,0 +1,25 @@
+# proof: 4.4-backlog
+# date: 2026-11-22T15:37:32+07:00
+# commit: f25ec70 (uncommitted changes)
+# command: scripts/m2/p4-reconnect.sh
+# artificial case: none
+
+leader aggregator-6f489f694d-cwshw on node-c (pod IP 10.42.2.130), feed host 104.21.84.171,172.67.195.83, committed offset before the cut: 1972153
+>>> feed connection cut at 08:37:34
+>>> connection allowed again at 08:39:04; during the cut the committed offset was 1973570
+PASS: caught up with the feed 92 s after the cut began (lag -2 frames)
+PASS: same pod, no restart, no change of leader: only the connection was lost
+PASS: committed offset moved forward only (1972153 -> 1973582)
+frames stored: 1973601, lowest offset 0, highest 1973600
+PASS: feed log contiguous after the reconnect: 1973601 frames for offsets 0..1973600, none lost, none stored twice
+log lines about the stream during the test:
+{"level":"warn","time":"2026-11-22T08:37:34.989Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"terminated","msg":"satellite stream interrupted"}
+{"level":"warn","time":"2026-11-22T08:37:35.853Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","msg":"satellite stream interrupted"}
+{"level":"warn","time":"2026-11-22T08:37:36.542Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","msg":"satellite stream interrupted"}
+{"level":"warn","time":"2026-11-22T08:37:38.893Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","cause":"ECONNREFUSED","event_loop_lag_ms":0,"elapsed_ms":10,"msg":"satell
+{"level":"warn","time":"2026-11-22T08:37:40.456Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","msg":"satellite stream interrupted"}
+{"level":"warn","time":"2026-11-22T08:37:43.917Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","cause":"ECONNREFUSED","event_loop_lag_ms":0,"elapsed_ms":21,"msg":"satell
+{"level":"warn","time":"2026-11-22T08:37:45.852Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","msg":"satellite stream interrupted"}
+{"level":"warn","time":"2026-11-22T08:37:48.945Z","service":"aggregator","pod":"aggregator-6f489f694d-cwshw","node":"node-c","source":"SATELIT","leader_epoch":300,"error":"fetch failed","cause":"ECONNREFUSED","event_loop_lag_ms":0,"elapsed_ms":18,"msg":"satell
+ALL CHECKS PASSED
+# exit code: 0
