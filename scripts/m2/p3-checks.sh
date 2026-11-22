@@ -15,11 +15,14 @@ restore() {
   cleanup_pf; rm -rf "$tmp"
   mock_admin mock-pvmbg 8082 /admin/schema-version '{"mode":"baseline"}' >/dev/null 2>&1 || true
   mock_admin mock-pvmbg 8082 /admin/malformed '{"mode":"none"}' >/dev/null 2>&1 || true
+  mock_admin mock-pvmbg 8082 /admin/malformed '{"mode":"none"}' >/dev/null 2>&1 || true
+  set_rule false >/dev/null 2>&1 || true   # the replay step turns the compatibility rule on; an interrupted run must not leave it on
   kubectl -n "$NS" scale statefulset rabbitmq --replicas="$BROKER_REPLICAS" >/dev/null 2>&1 || true
 }
 trap restore EXIT
 
 ops() { mint bnpb-ops AUTH_CLIENT_BNPB_OPS_SECRET; }
+set_rule() { curl -s -m 8 -X POST "$API_URL/unprocessed/schema-rules" -H "Authorization: Bearer $(ops)" -H 'content-type: application/json' -d "{\"enablePvmbgV2Compat\":$1}"; }
 # A parked message's id is "msg-" + sha256("PVMBG\0" + sha256(raw bytes)) cut to 12 hex digits. So recomputing that id from the bytes the mock
 # serves right now proves the stored copy is the original, byte for byte (a changed or truncated copy would get another id).
 raw_preserved() { # raw_preserved <reason-prefix>: the mock's current response bytes map to a parked message with that reason
@@ -36,6 +39,8 @@ parked() { curl -s -m 8 -H "Authorization: Bearer $(ops)" "$API_URL/unprocessed?
 restarts() { kubectl -n "$NS" get pods -l app.kubernetes.io/name=aggregator -o json | jq '[.items[].status.containerStatuses[]?.restartCount] | add // 0'; }
 bmkg_count() { audit "/internal/audit/checksum?source=BMKG" | jq -r '.count'; }
 
+# Start from a known state: the compatibility rule OFF and the mock in its normal mode (an earlier interrupted run may have left either changed).
+set_rule false >/dev/null; mock_admin mock-pvmbg 8082 /admin/schema-version '{"mode":"baseline"}' >/dev/null 2>&1 || true; mock_admin mock-pvmbg 8082 /admin/malformed '{"mode":"none"}' >/dev/null 2>&1 || true
 echo ">>> 5. only BNPB Ops can inspect parked messages"
 media=$(mint media AUTH_CLIENT_MEDIA_SECRET); field=$(mint field-team AUTH_CLIENT_FIELD_TEAM_SECRET)
 code() { curl -s -m 5 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $1" "$API_URL/unprocessed"; }
@@ -44,7 +49,10 @@ code() { curl -s -m 5 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $
 [ "$(code "$(ops)")" = 200 ] && pass "bnpb-ops -> /unprocessed is 200" || fail "bnpb-ops -> /unprocessed is not 200"
 
 echo ">>> 1/2. schema policy: additive accepted, incompatible parked with reason"
-base_parked=$(parked | jq 'length'); r0=$(restarts)
+# Messages that arrived while an earlier version of the same report was still parked wait in a retry state (the per-key order) and turn into parked messages after their
+# attempts run out, which can be a minute or two after an earlier run. Measure only once the parked count has stopped changing for 60 s, or those late arrivals look like "new" parking.
+prev=-1; stable=0; for _ in $(seq 1 60); do n=$(parked | jq 'length'); if [ "$n" = "$prev" ]; then stable=$((stable + 1)); else stable=0; fi; prev=$n; [ "$stable" -ge 6 ] && break; sleep 10; done
+base_parked=$prev; r0=$(restarts)
 mock_admin mock-pvmbg 8082 /admin/schema-version '{"mode":"additive"}' >/dev/null; sleep 15
 add_parked=$(parked | jq 'length')
 [ "$add_parked" = "$base_parked" ] && pass "additive change (new field) is accepted automatically, nothing parked" || fail "additive change parked $((add_parked - base_parked)) message(s)"

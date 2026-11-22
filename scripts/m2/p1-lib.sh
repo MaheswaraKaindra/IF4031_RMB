@@ -17,7 +17,9 @@ AUDIT_TOKEN=$(envget AUDIT_TOKEN)
 tool() {
   local pod; pod=$(ready_pod aggregator)
   [ -n "$pod" ] || { echo "no Ready aggregator pod" >&2; return 1; }
-  kubectl -n "$NS" exec "$pod" -c aggregator -- node dist/tools/store-tool.js "$@"
+  # the tool starts the aggregator's logger: its JSON log lines are not part of the result, so they are filtered out (set TOOL_LOGS=1 to see them)
+  if [ "${TOOL_LOGS:-0}" = 1 ]; then kubectl -n "$NS" exec "$pod" -c aggregator -- node dist/tools/store-tool.js "$@"
+  else { kubectl -n "$NS" exec "$pod" -c aggregator -- node dist/tools/store-tool.js "$@" | { grep -v '"service":"aggregator"' || true; }; } ; fi
 }
 
 # Where requests go. Default: kubectl port-forwards (see forward() below).

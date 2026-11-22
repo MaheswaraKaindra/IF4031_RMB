@@ -14,6 +14,7 @@ PFS=(); STOPPED_NODE=""
 restore() {
   for p in "${PFS[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done
   [ -n "$STOPPED_NODE" ] && { echo ">>> starting $STOPPED_NODE again"; vm_do start "$STOPPED_NODE" || true; node_ready_wait "$STOPPED_NODE" 300 || true; }
+  return 0   # without this the failed test above (no node was stopped) made the script exit 1 although every check passed
 }
 trap restore EXIT
 

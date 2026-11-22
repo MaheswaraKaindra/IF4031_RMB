@@ -18,7 +18,7 @@ for svc in $(kubectl -n "$NS" get svc -o name | grep -E 'aggregator' | sed 's#se
   have=$(kubectl -n "$NS" get endpointslices -l "kubernetes.io/service-name=$svc" -o json | jq '[.items[].endpoints[]? | select(.conditions.ready==true)] | length')
   [ "$have" = "$ready" ] && pass "Service $svc routes to $have Ready pods" || fail "Service $svc has $have ready endpoints, $ready pods are Ready"
 done
-# Through the real entry point every request is answered, and by more than one instance.
-ok=0; for _ in $(seq 1 30); do [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' -H "authorization: Bearer $AUDIT_TOKEN" "$AUDIT_URL/internal/audit/checksum")" = 200 ] && ok=$((ok + 1)); done
+# Through the real entry point every request is answered (a cheap endpoint: the checksum scans every record and takes seconds, which would test the scan and not the routing).
+ok=0; for _ in $(seq 1 30); do [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' -H "authorization: Bearer $AUDIT_TOKEN" "$AUDIT_URL/internal/audit/events?limit=1")" = 200 ] && ok=$((ok + 1)); done
 [ "$ok" = 30 ] && pass "30/30 requests through NodePort 30000 answered 200" || fail "only $ok/30 requests answered 200"
 finish

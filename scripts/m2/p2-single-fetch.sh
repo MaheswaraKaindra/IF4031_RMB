@@ -40,8 +40,12 @@ done
 # coastal sensor: only the leader's request counter moves
 movers=0; for p in $PODS; do a=$(awk '/^coastal_sensor_requests_total/ {s+=$NF} END{print s+0}' "$tmp/m1.$p"); b=$(awk '/^coastal_sensor_requests_total/ {s+=$NF} END{print s+0}' "$tmp/m2.$p"); [ "$(awk -v a="$a" -v b="$b" 'BEGIN{print (b>a)}')" = 1 ] && movers=$((movers + 1)); done
 [ "$movers" = 1 ] && pass "SENSOR_PANTAI: exactly one pod sent requests to the sensor in 20 s" || fail "SENSOR_PANTAI: $movers pods sent requests to the sensor in 20 s"
-# satellite: only the leader holds the stream (its processing counters move and the session monitor gauges exist on one pod)
-holders=0; for p in $PODS; do grep -q '^satellite_source_latest_offset ' "$tmp/m2.$p" && holders=$((holders + 1)); done
-if [ "$holders" = 0 ]; then echo "SKIP: SATELIT pipeline is off (no SATELLITE_GROUP_TOKEN in the secret)"
-else [ "$holders" = 1 ] && pass "SATELIT: exactly one pod holds the feed connection ($holders)" || fail "SATELIT: $holders pods report feed state (more than one stream open)"; fi
+# satellite: only the leader holds the stream. A pod that led earlier keeps its last gauge values (older images never cleared them), so "has the gauge" is not
+# "holds the stream": count the pods whose feed offset MOVED between the two samples, and the pods that have the gauge at all (to see whether the pipeline is on).
+holders=0; has=0; for p in $PODS; do
+  a=$(awk '/^satellite_source_latest_offset / {print $2}' "$tmp/m1.$p"); b=$(awk '/^satellite_source_latest_offset / {print $2}' "$tmp/m2.$p")
+  [ -n "$b" ] && has=$((has + 1)); [ -n "$a" ] && [ -n "$b" ] && [ "$(awk -v a="$a" -v b="$b" 'BEGIN{print (b>a)}')" = 1 ] && holders=$((holders + 1))
+done
+if [ "$has" = 0 ]; then echo "SKIP: SATELIT pipeline is off (no SATELLITE_GROUP_TOKEN in the secret)"
+else [ "$holders" = 1 ] && pass "SATELIT: exactly one pod holds the feed connection (its feed offset moved on $holders pod; $has pods carry the gauge)" || fail "SATELIT: the feed offset moved on $holders pods (more than one stream open)"; fi
 finish
