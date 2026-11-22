@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { InMemoryRulesBackend, SchemaRulesStore } from './schemaRulesStore.js';
+import { applyRulesPatch, InMemoryRulesBackend, SchemaRulesStore } from './schemaRulesStore.js';
 import { defaultSchemaRules } from './schemaValidator.js';
 
 const base = () => ({ ...defaultSchemaRules(), enablePvmbgV2Compat: false, fieldAliases: {}, coerceNumericStrings: false, defaults: {} });
@@ -52,4 +52,15 @@ test('two pods saving in turn never lose the earlier change', async () => {
     await podA.refresh();
     assert.deepEqual(podA.current().defaults, { a: 1 });
     assert.equal(podA.current().coerceNumericStrings, true);
+});
+
+test('turning the compatibility rule off removes the field aliases, so a renamed field is not accepted any more', () => {
+    const on = applyRulesPatch(defaultSchemaRules(), { enablePvmbgV2Compat: true });
+    assert.deepEqual(on.fieldAliases, { mountain_code: 'volcano_id', status_level: 'alert_level' });
+    assert.equal(on.coerceNumericStrings, true);
+    const off = applyRulesPatch(on, { enablePvmbgV2Compat: false });
+    assert.deepEqual(off.fieldAliases, {});
+    assert.equal(off.coerceNumericStrings, false);
+    // a patch that does not mention the flag keeps what is there
+    assert.deepEqual(applyRulesPatch(on, { defaults: { x: 1 } }).fieldAliases, on.fieldAliases);
 });

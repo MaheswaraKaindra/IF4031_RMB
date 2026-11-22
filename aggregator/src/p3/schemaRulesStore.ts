@@ -20,11 +20,14 @@ export interface RulesBackend {
 }
 
 export function applyRulesPatch(current: SchemaRulesConfig, body: Partial<SchemaRulesConfig>): SchemaRulesConfig {
+    const enabled = body.enablePvmbgV2Compat ?? current.enablePvmbgV2Compat;
     return {
-        enablePvmbgV2Compat: body.enablePvmbgV2Compat ?? current.enablePvmbgV2Compat,
+        enablePvmbgV2Compat: enabled,
+        // The validator applies the aliases whenever they exist, so turning the rule OFF must remove them (otherwise a renamed field stays accepted for good
+        // after the first time the rule was on: found when a rename was no longer parked in the P3 check).
         fieldAliases:
             body.fieldAliases ??
-            (body.enablePvmbgV2Compat ? { mountain_code: 'volcano_id', status_level: 'alert_level' } : current.fieldAliases),
+            (body.enablePvmbgV2Compat === undefined ? current.fieldAliases : enabled ? { mountain_code: 'volcano_id', status_level: 'alert_level' } : {}),
         coerceNumericStrings: body.coerceNumericStrings ?? (body.enablePvmbgV2Compat ?? current.coerceNumericStrings),
         defaults: body.defaults ?? current.defaults,
     };
