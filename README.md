@@ -380,8 +380,7 @@ yang gagal. Aksi pada VM dipasang lewat variabel lingkungan supaya tidak ada pat
 
 Pemeriksaan umum: `verify-resources.sh`, `verify-isolation.sh`, `smoke.sh`. Kapasitas yang terukur pada 3 VM di satu PC: jalur
 NodePort -> client-api -> aggregator -> mongos -> shard stabil sampai sekitar 100-150 req/s (p95 65 ms pada 100 req/s); di atas itu
-semua VM penuh (~95% CPU, setengahnya waktu kernel/jaringan overlay) dan latensi runtuh menjadi timeout. Beban 10.000 VU tidak dapat
-dibangkitkan dari PC ini (k6 membutuhkan >20 GB), sehingga hasil dilaporkan pada laju yang berkelanjutan.
+semua VM penuh (~95% CPU, setengahnya waktu kernel/jaringan overlay) dan latensi runtuh menjadi timeout. Beban 10.000 pengguna maya dijalankan dengan generator asinkron ringan (`load-test/vu-sim.mjs`, `scripts/m2/p2-load-10k.sh`) pada laju sekitar 71 req/s, karena k6 tidak muat di memori PC ini dan klaster hanya melayani sekitar 100 req/s.
 
 ### Variabel konfigurasi tambahan (M2)
 
@@ -404,6 +403,7 @@ dibangkitkan dari PC ini (k6 membutuhkan >20 GB), sehingga hasil dilaporkan pada
 | `SENSOR_PANTAI_URL`, `COASTAL_POLL_INTERVAL_MS`, `COASTAL_TIMEOUT_MS` | `http://sensor-pantai:8080`, `1000`, `1500` | alamat dan jadwal poller pesisir |
 | `COASTAL_BREAKER_FAILURES` / `_WINDOW_MS` / `_OPEN_MS` / `_MAX_OPEN_MS` | `5` / `30000` / `2000` / `5000` | circuit breaker ke Sensor Pantai |
 | `COASTAL_STALE_LAG_SEC`, `COASTAL_LEASE_DURATION_SEC` | `120`, `8` | batas data sensor dianggap basi dan Lease poller pesisir |
+| `MONGO_SOCKET_TIMEOUT_MS` | `30000` | batas satu operasi MongoDB sebelum dianggap macet dan diulang oleh jalur retry (tanpa ini operasi pada koneksi yang macet menunggu tanpa batas) |
 | `MAX_IN_FLIGHT` / `RESERVED_FIELD_TEAM` / `MEDIA_MAX_IN_FLIGHT` | `100` / `40` / `30` per replika client-api | batas permintaan bersamaan, slot yang hanya boleh dipakai Tim Lapangan, dan batas Media; yang melewati batas dijawab 429 |
 | `AGGREGATOR_TIMEOUT_MS` / `FIELD_REPORT_RETRY_TIMEOUT_MS` | `2000` / `3000` | batas panggilan client-api ke aggregator; percobaan kedua untuk laporan lapangan yang belum terjawab (aman: idempotensi) |
 | `MONGO_URI` / `MONGO_URI_PLAIN` | `mongodb+srv://...@mongos-direct...` / `mongodb://...@mongos:27017/...` | aggregator memakai nama SRV (driver melihat kedua router mongos); init container memakai URI biasa karena shell `mongo` 4.4 tidak mendukung SRV |
@@ -415,7 +415,7 @@ dibangkitkan dari PC ini (k6 membutuhkan >20 GB), sehingga hasil dilaporkan pada
 - Store berjalan di MongoDB **4.4**, bukan 7: VM VirtualBox-on-Hyper-V tidak menyediakan instruksi AVX. Operator agregasi 5.0+ tidak boleh dipakai (kode pesisir memakai `$add` dengan `$$NOW`, bukan `$dateAdd`).
 - Pipeline satelit (P4) aktif saat `SATELLITE_GROUP_TOKEN` diisi. Pengujian umpan asli, SIGKILL leader, dan kehilangan node tercatat di [bukti fase 2](docs/m2/evidence/pc-run-phase2.md).
 - Tester Agent: skenario `schema` lulus. Skenario yang menyasar pod/node (`kill-leader`, `kill-store`, `wipe-node`, `clock-skew`, `partition`) tidak menemukan sasaran karena ketiga node adalah server k3s (control-plane) dan agen hanya menyasar node worker kecuali diizinkan; perlu keputusan topologi (node B/C sebagai agent) atau cara mengizinkan.
-- Kapasitas jalur baca sekitar 100-150 req/s pada 3 VM satu PC (lihat di atas); 10.000 VU tidak tercapai.
+- Kapasitas jalur baca sekitar 100-150 req/s pada 3 VM satu PC (lihat di atas); 10.000 pengguna dicapai dengan `vu-sim.mjs` pada sekitar 71 req/s, dan rasio throughput 3 melawan 1 instans (5,28 kali) hanya terukur dengan batas CPU 250m per pod (`p2-throughput-capped.sh`).
 - Observability: metrik dan jejak ada untuk aggregator, client-api, auth, consumer, serta metrik RabbitMQ dan MongoDB per shard; penulisan ke store dan publish ke broker kini berupa span sendiri (satu permintaan terlihat di semua hop, lihat `docs/m2/observability.md`); mock, MongoDB, RabbitMQ, dan image sensor sendiri tidak menghasilkan span.
 - Skrip di `scripts/m1/` (`p2-*`, `p3-*`, `p4-*`, `script-ps-*`) hanya untuk Docker Compose; skrip Kubernetes ada di `scripts/m2/`.
 

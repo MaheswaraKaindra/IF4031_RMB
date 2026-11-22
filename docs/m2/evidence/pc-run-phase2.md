@@ -35,7 +35,7 @@ After the measurements, a user-approved cleanup removed the 90,000 hazards with 
 | 4 | clock shift +45 s then -30 s | PASS | `p2-clock-skew.sh`: 0 leadership changes, 0 overlapping leaders and 0 duplicates in 80+ sampled rounds in the later run. Polling now overlaps the previous cursor by 120 s and the test compares stored IDs with mock events produced during the run. Before the lease fix the same test gave 10 leadership changes in 3 minutes |
 | 5 | frozen node wakes up | PASS | `p2-freeze.sh` (VM paused 28 s, then resumed): the old leader stopped acting as leader within ~1 s, made 0 upstream polls, 0 duplicates, 0 records lost |
 | 6 | sustained load while scaling 3-5-2-3 | PASS at a sustainable rate | `p2-load.sh` at a fixed 60 req/s for 150 s: 10,290 requests, 0.76% errors (< 1%), criterion 2 still holds. **Not** at 10,000 VU, see below |
-| 7 | throughput with 3 instances >= 2.0x one instance | NOT DEMONSTRATED | at saturation the successful rate was 22 vs 52 req/s (2.34x) in one run and 564 vs 403 req/s (0.72x) in another, with 12-51% failures: the platform is saturated by network overhead, not by the aggregator, so the ratio is not a valid measurement |
+| 7 | throughput with 3 instances >= 2.0x one instance | NOT DEMONSTRATED here (later: 5.28x under a 250m CPU cap, see the section "P2 under 10,000 virtual users ..." below) | at saturation the successful rate was 22 vs 52 req/s (2.34x) in one run and 564 vs 403 req/s (0.72x) in another, with 12-51% failures: the platform is saturated by network overhead, not by the aggregator, so the ratio is not a valid measurement |
 | 8 | rolling update during load without a failed request | PASS | 3 consecutive rolling updates at 60 req/s: 0 failed requests (before the client-api retry: 1 failure in about 4,100 requests) |
 
 **Capacity limit.** During the load all three VMs reached 94-98% CPU with about half of it kernel time (`vmstat`: us 45%, sy 50%, PSI 60-75%).
@@ -111,7 +111,7 @@ Jaeger shows traces across client-api, aggregator and the three consumers. Gaps:
 ## Open issues
 - Tester Agent scenarios other than `schema` (decision above); exam scenarios need the key given at the demo.
 - P5 timeliness under whole-node loss and field-team read latency and report acceptance under the tested Media load miss their thresholds. P5.6/P5.8 need the Tester Agent.
-- 10,000 VU and the 2.0x throughput ratio cannot be shown on this hardware.
+- 10,000 VU and the 2.0x throughput ratio could not be shown at this point; they were later shown with a light generator and a CPU cap (see the 2026-11-22 section "P2 under 10,000 virtual users ...").
 - Owner C's satellite suite had a flaky test (`crash after the checkpoint ... same final set`) and a hang once under the parallel runner; both disappeared with sequential execution, cause not isolated.
 - Analytics dashboard in a browser (banner and compare button) was verified at API and HTML level only.
 - Per-key ordering after replay, spans for mocks, store, broker and sensor.

@@ -168,6 +168,8 @@ Sistem mengekspor metrik Prometheus dari 21 target \textit{pod} ke Grafana (dasb
     \textbf{Saturasi CPU memicu \textit{tail latency} hilir saat banjir Media} & \texttt{PriorityAdmission} mencatat 0 penolakan \texttt{429} untuk Tim Lapangan. Namun di klaster 3-VM VirtualBox, banjir Media menaikkan $p_{95}$ baca menjadi $1{,}83$--$1{,}88\text{ s}$ serta memicu sedikit \textit{timeout} \texttt{2.000 ms} pada \path{POST /field-reports} walau laporan tetap tersimpan di \textit{outbox}. & \path{client-api/src/middleware/admission.ts}, \path{docs/m2/deviations.md} \\
     \midrule
     \textbf{Uji gabungan \textit{Tester Agent} (\textit{game day}) belum penuh} & Baru skenario \texttt{schema} yang lolos dari enam skenario latihan karena seluruh \textit{node} klaster k3s berperan sebagai \textit{control-plane}. Skenario ujian penuh juga menunggu kunci resmi saat demo. & \path{docs/m2/deviations.md}, \path{docs/m2/evidence/pc-run-phase2.md} \\
+    \midrule
+    \textbf{Beban kerja M1 dan batas Media pada bukti pengujian} & Pada 50 pengguna M1 asli, p95 SEISMIC tidak mencapai 300 ms walau sensor sehat (VM melayani sekitar 45 hingga 50 permintaan per detik), sehingga bukti memakai empat pengguna. Bukti prioritas memakai batas Media 4 permintaan bersamaan per \textit{pod} (baku 30); pada pengaturan baku dengan 100 pengguna Media p95 Tim Lapangan sekitar 1,9 detik. & \path{scripts/m2/p5-m1-load.sh}, \path{load-test/p5-priority.js} \\
     \bottomrule
   \end{tabularx}
 \end{table}

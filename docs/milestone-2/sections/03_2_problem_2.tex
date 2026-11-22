@@ -196,6 +196,8 @@ Pengujian beban memakai \texttt{k6} pada \path{load-test/p2-scale.js} dari luar 
     \textbf{Batas konkurensi \texttt{MAX\_IN\_\allowbreak FLIGHT=100} per \textit{pod} \texttt{client-api}} & Untuk melindungi memori \texttt{256Mi} pada \texttt{client-api}, lonjakan mendadak sebelum \textit{autoscaler} menambah replika dijawab cepat dengan HTTP \texttt{429}. Pendekatan ini mencegah antrean membengkak dan mengalami \textit{timeout}. & \path{client-api/src/index.ts:20}, \path{load-test/p2-scale.js:15-16} \\
     \midrule
     \textbf{Penyimpanan \textit{refresh token} bersifat lokal per replika} & Layanan \texttt{auth-service} memakai \texttt{sessionAffinity: ClientIP} dengan dua replika. Jika satu replika mati, klien dapat memperoleh token baru melalui \path{/token}, sebagaimana disimulasikan oleh logika penyegaran skrip \texttt{k6}. & \path{k8s/overlays/demo/kustomization.yaml:55-68}, \path{load-test/p2-scale.js:54-64} \\
+    \midrule
+    \textbf{Kapasitas jalur permintaan dan rasio 3 melawan 1 instans} & Ketiga VM berbagi CPU satu komputer, sehingga jalur NodePort hingga penyimpanan hanya melayani sekitar 100 permintaan per detik. Beban 10.000 pengguna dijalankan pada laju sekitar 71 permintaan per detik dengan generator asinkron (k6 tidak muat di memori), dan rasio \textit{throughput} 3 melawan 1 instans (5,28 kali) hanya terukur dengan batas CPU 250m per \textit{pod}; tanpa batas rasio sekitar 0,9 kali karena \texttt{aggregator} bukan penghambat. & \path{load-test/vu-sim.mjs}, \path{scripts/m2/p2-throughput-capped.sh} \\
     \bottomrule
   \end{tabularx}
 \end{table}
