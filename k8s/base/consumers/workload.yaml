@@ -1,5 +1,5 @@
 # One image (bnpb/consumers), three entrypoints, same as docker-compose. Secret consumers-secret
-# (RABBITMQ_URL) is created by scripts/k8s/create-secrets.sh. Health port serves /health only and
+# (RABBITMQ_URL) is created by scripts/m2/create-secrets.sh. Health port serves /health only and
 # returns 503 while the broker connection is down, so liveness is a TCP check (a broker outage
 # must not restart-loop the consumers) and readiness uses /health.
 apiVersion: apps/v1

@@ -28,7 +28,7 @@ roleRef:
   name: aggregator-lease-role
 ---
 # Secret aggregator-secret (X_BMKG_KEY, PVMBG_TOKEN, MONGO_URI, RABBITMQ_URL) is created by
-# scripts/k8s/create-secrets.sh.
+# scripts/m2/create-secrets.sh.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -72,7 +72,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
         }
     }
 
-    // Node names change when a slot moves to a replacement machine (scripts/k8s/p1-replace-node.sh); member hosts are
+    // Node names change when a slot moves to a replacement machine (scripts/m2/p1-replace-node.sh); member hosts are
     // stable DNS names, so connections and probes are unaffected. Only placement answers (/location, report) change.
     setTopology(t: StoreTopology): void {
         if (this.topology) this.topology = t;
@@ -120,7 +120,7 @@ export class MongoCanonicalRepository implements ICanonicalRepository {
             if (err instanceof MongoWriteConcernError && !this.o.strictWrites) {
                 // wtimeout: the primary applied the write, only the second data member has not confirmed (it is down or
                 // re-syncing). Refusing writes for the whole recovery window would stop ingestion; acknowledge it as
-                // DEGRADED instead: durable on ONE copy until resync (see docs/consistency.md). Callers count/log `degraded`.
+                // DEGRADED instead: durable on ONE copy until resync (see docs/m2/consistency.md). Callers count/log `degraded`.
                 return { outcome: 'applied', hazard_id: id, created: true, degraded: true, detail: errMsg(err) };
             }
             // Network / server-selection error, or strict mode: the write may or may not have happened.

@@ -1,5 +1,5 @@
 # Ingress isolation, enforced by the CNI (k3s ships a NetworkPolicy controller; kind's kindnet enforces it too on recent
-# versions, verify with scripts/k8s/verify-isolation.sh). Egress is intentionally unrestricted: this project's
+# versions, verify with scripts/m2/verify-isolation.sh). Egress is intentionally unrestricted: this project's
 # requirement is "no component can CONNECT TO storage it does not own", which ingress rules on the storage pods give.
 # Kubelet probes are always allowed by NetworkPolicy semantics.
 #

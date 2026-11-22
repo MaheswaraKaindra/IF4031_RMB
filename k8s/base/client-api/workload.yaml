@@ -1,4 +1,4 @@
-# Secret client-api-secret (JWT_PUBLIC_KEY_B64) is created by scripts/k8s/create-secrets.sh.
+# Secret client-api-secret (JWT_PUBLIC_KEY_B64) is created by scripts/m2/create-secrets.sh.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -1,5 +1,5 @@
 # Idempotent cluster bootstrap: replica sets, addShard, hashed-_id sharding, users, default write concern.
-# Jobs are immutable: scripts/deploy.sh deletes the previous Job before applying.
+# Jobs are immutable: scripts/m2/deploy.sh deletes the previous Job before applying.
 apiVersion: batch/v1
 kind: Job
 metadata:

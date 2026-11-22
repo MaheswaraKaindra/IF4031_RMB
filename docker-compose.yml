@@ -16,7 +16,7 @@ services:
     build: ./mock-bmkg
     environment:
       BMKG_PORT: ${BMKG_PORT:-8081}
-      X_BMKG_KEY_SHA256: ${X_BMKG_KEY_SHA256:?jalankan scripts/gen-secrets.sh}
+      X_BMKG_KEY_SHA256: ${X_BMKG_KEY_SHA256:?jalankan scripts/m1/gen-secrets.sh}
       BMKG_EVENT_INTERVAL_MS: ${BMKG_EVENT_INTERVAL_MS:-10000}
       BMKG_WARNING_DELAY_MS: ${BMKG_WARNING_DELAY_MS:-0}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -32,7 +32,7 @@ services:
     build: ./mock-pvmbg
     environment:
       PVMBG_PORT: ${PVMBG_PORT:-8082}
-      PVMBG_TOKEN_SHA256: ${PVMBG_TOKEN_SHA256:?jalankan scripts/gen-secrets.sh}
+      PVMBG_TOKEN_SHA256: ${PVMBG_TOKEN_SHA256:?jalankan scripts/m1/gen-secrets.sh}
       PVMBG_DELAY_MIN_MS: ${PVMBG_DELAY_MIN_MS:-500}
       PVMBG_DELAY_MAX_MS: ${PVMBG_DELAY_MAX_MS:-3000}
       PVMBG_REPORT_INTERVAL_MS: ${PVMBG_REPORT_INTERVAL_MS:-10000}
@@ -49,7 +49,7 @@ services:
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-bnpb}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?jalankan scripts/gen-secrets.sh}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?jalankan scripts/m1/gen-secrets.sh}
     volumes:
       - mongo-data:/data/db
     networks: [store]
@@ -65,7 +65,7 @@ services:
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-bnpb}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?jalankan scripts/gen-secrets.sh}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?jalankan scripts/m1/gen-secrets.sh}
     ports:
       - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
@@ -85,8 +85,8 @@ services:
       AGGREGATOR_PORT: ${AGGREGATOR_PORT:-3000}
       BMKG_URL: http://mock-bmkg:${BMKG_PORT:-8081}
       PVMBG_URL: http://mock-pvmbg:${PVMBG_PORT:-8082}
-      X_BMKG_KEY: ${X_BMKG_KEY:?jalankan scripts/gen-secrets.sh}
-      PVMBG_TOKEN: ${PVMBG_TOKEN:?jalankan scripts/gen-secrets.sh}
+      X_BMKG_KEY: ${X_BMKG_KEY:?jalankan scripts/m1/gen-secrets.sh}
+      PVMBG_TOKEN: ${PVMBG_TOKEN:?jalankan scripts/m1/gen-secrets.sh}
       POLLING_INTERVAL_MS: ${POLLING_INTERVAL_MS:-3000}
       MONGO_URI: mongodb://${MONGO_USERNAME:-bnpb}:${MONGO_PASSWORD}@mongo:27017/bnpb_canonical_store?authSource=admin
       RABBITMQ_URL: amqp://${RABBITMQ_USERNAME:-bnpb}:${RABBITMQ_PASSWORD}@rabbitmq:5672
@@ -110,7 +110,7 @@ services:
       AGGREGATOR_TIMEOUT_MS: ${AGGREGATOR_TIMEOUT_MS:-2000}
       STALE_AFTER_MS: ${STALE_AFTER_MS:-10000}
       MAX_IN_FLIGHT: ${MAX_IN_FLIGHT:-100}
-      JWT_PUBLIC_KEY_B64: ${JWT_PUBLIC_KEY_B64:?jalankan scripts/gen-secrets.sh}
+      JWT_PUBLIC_KEY_B64: ${JWT_PUBLIC_KEY_B64:?jalankan scripts/m1/gen-secrets.sh}
       JWT_ISSUER: ${JWT_ISSUER:-bnpb-auth}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-bnpb-client-api}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -126,16 +126,16 @@ services:
     build: ./auth-service
     environment:
       AUTH_PORT: ${AUTH_PORT:-8090}
-      JWT_PRIVATE_KEY_B64: ${JWT_PRIVATE_KEY_B64:?jalankan scripts/gen-secrets.sh}
+      JWT_PRIVATE_KEY_B64: ${JWT_PRIVATE_KEY_B64:?jalankan scripts/m1/gen-secrets.sh}
       JWT_ISSUER: ${JWT_ISSUER:-bnpb-auth}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-bnpb-client-api}
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-60}
       REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-3600}
       AUTH_MAX_FAILED_ATTEMPTS: ${AUTH_MAX_FAILED_ATTEMPTS:-10}
       AUTH_FAILURE_WINDOW_SECONDS: ${AUTH_FAILURE_WINDOW_SECONDS:-60}
-      AUTH_CLIENT_MEDIA_SECRET_SHA256: ${AUTH_CLIENT_MEDIA_SECRET_SHA256:?jalankan scripts/gen-secrets.sh}
-      AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256: ${AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256:?jalankan scripts/gen-secrets.sh}
-      AUTH_CLIENT_BNPB_OPS_SECRET_SHA256: ${AUTH_CLIENT_BNPB_OPS_SECRET_SHA256:?jalankan scripts/gen-secrets.sh}
+      AUTH_CLIENT_MEDIA_SECRET_SHA256: ${AUTH_CLIENT_MEDIA_SECRET_SHA256:?jalankan scripts/m1/gen-secrets.sh}
+      AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256: ${AUTH_CLIENT_FIELD_TEAM_SECRET_SHA256:?jalankan scripts/m1/gen-secrets.sh}
+      AUTH_CLIENT_BNPB_OPS_SECRET_SHA256: ${AUTH_CLIENT_BNPB_OPS_SECRET_SHA256:?jalankan scripts/m1/gen-secrets.sh}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "${AUTH_PORT:-8090}:${AUTH_PORT:-8090}"

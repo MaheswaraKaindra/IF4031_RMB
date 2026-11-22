@@ -1,6 +1,6 @@
 # Three-node RabbitMQ cluster (classic_config peer discovery through the headless Service). Critical alerts use a
 # quorum queue, so restarting or losing one pod does not stop publishing or delivery.
-# Secret rabbitmq-secret (RABBITMQ_DEFAULT_USER/PASS) comes from scripts/k8s/create-secrets.sh.
+# Secret rabbitmq-secret (RABBITMQ_DEFAULT_USER/PASS) comes from scripts/m2/create-secrets.sh.
 apiVersion: v1
 kind: ConfigMap
 metadata:
