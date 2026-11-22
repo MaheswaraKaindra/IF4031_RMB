@@ -280,3 +280,16 @@ Change: client-api now repeats that POST once (3 s limit, `FIELD_REPORT_RETRY_TI
 | 499 | 21 | aggregator | `POST /internal/deliveries/ack` | relay |
 
 The same trace holds the further relays, consumers and acknowledgements of the other alerts. The store write is inside the `coastal critical ingest` span; it has no span of its own on this path.
+
+## Found while taking the P3 proofs, 2026-11-22: two inbox defects (P3 criteria 1-4)
+
+Both were found because `p3-checks.sh` (3.1) failed during the proof run, and both are fixed in the aggregator (unit tests: 143 pass).
+
+1. **Turning the PVMBG compatibility rule off did not turn it off.** `applyRulesPatch` left the field aliases in place when `enablePvmbgV2Compat` was set to false, and the validator applies the aliases whenever they exist. After the rule had been enabled once, a renamed field stayed accepted for good: `incompatible_rename: nothing was parked` and the replay recovered 0 (the run had 3 FAILs, the other 30 checks passed). Now turning the rule off clears the aliases (test added).
+2. **A held record stalled the poll cursor.** A later version of a report is held behind an earlier parked version of the same key (the per-key order). The hold returned `transient_queued`, which means "not committed", so the source's cursor never advanced and every poll (3 s) re-fetched and re-queued the whole stuck window. With the mock's additive mode (a random field changes on every response, so the bytes never repeat and cannot be de-duplicated) the parked list grew by hundreds of messages a minute (216 -> 315 in a few minutes), and the additive check saw "59 new messages parked". A held record is already safely in the inbox, so it now returns `held` and the poll is committed. After the fix the parked count stayed at 243 for 7 minutes.
+
+Failed runs of `3.1` are kept in `docs/m2/proofs/3.1/superseded/`.
+
+## Satellite processor froze inside a batch, 2026-11-22 (P4 criteria 4 and 5)
+
+Found while taking the 4.4 proof: the baseline check "caught up with the feed (lag <= 200 frames)" failed with the committed offset 3,356 frames behind, and sampling showed the committed offset frozen at 1,952,859 for more than ten minutes while the feed and the feed log kept advancing. The leader's log showed one write-concern timeout at 07:59:29 (while the 4.1 reference run was reading the whole feed log from the store) followed by `satellite batch will be retried`, and nothing after that. The aggregator's MongoDB client had no socket timeout, so an operation on a connection that stalls can wait for ever and the batch retry loop never gets to retry. Change: `socketTimeoutMS` (default 30 s, `MONGO_SOCKET_TIMEOUT_MS`) on the aggregator's client, so a stalled operation fails and goes through the existing retries. The cause (one hung operation) was not observed directly (the aggregator's database user cannot read `currentOp`), so it is the most likely explanation, not a proven one. After the rollout the processor was caught up (committed 1,963,830 against latest 1,963,821) and moving.

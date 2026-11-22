@@ -76,7 +76,44 @@ What still has to be captured for the report, one row per tracker criterion (`do
 | G.1 | `verify-resources.sh`, `verify-isolation.sh`, `smoke.sh` | none | Text | VM or kind OK | 10 min |
 | G.2 | Grafana dashboards (latency, throughput, error rate per service), a log line with a correlation ID, a Jaeger trace | none | Shot | VM | 30 min |
 | G.3 | `audit-contract.sh` (24 checks) | none | Text | VM or kind OK | 5 min |
-| G.5 | HPA ramp up and down: replica counts over time while the load rises and falls (optional bonus, needs the code and report text) | A ramped load, not a real surge | Text + Shot (replica graph) | VM | 40 min |
+| G.5 / H.1 | HPA bonus: replica counts of client-api and the aggregator while the load rises and then falls (`proof.sh H.1`; needs the code in `k8s/overlays/demo/hpa.yaml` and the report text) | A ramped closed-loop load (k6, up to 60 users), not a real surge | Text (replica table every 10 s) + Shot (terminal table, Grafana "Memory working set per pod" and throughput panels) | VM | 12 min plus the wait for the minimum replicas |
+
+## Commands to run for P2-P5 and the platform checks (with `scripts/m2/proof.sh`)
+
+Run each item with `scripts/m2/proof.sh <id>` from the repo root, one at a time, in this order. The runner checks the cluster is healthy first for the items marked "waits" (about 3-5 min of waiting is added the first time it is not quiet), runs the underlying script(s) through `proof-run.sh`, then asks for the screenshot(s). **Run ETA** is the time the test itself takes, estimated from the earlier runs (not a fresh timing); add the wait for the "waits" items and 1-2 min per screenshot prompt.
+
+| Item | Command | Underlying script(s) | Disturbs the cluster | Run ETA | Screenshots |
+|---|---|---|---|---|---|
+| 2.1 | `proof.sh 2.1` | `p2-placement.sh` + `kubectl get pods -o wide` | no | 1 min | 1 terminal |
+| 2.2 | `proof.sh 2.2` | `p2-single-fetch.sh` | no | 2 min | 1 terminal |
+| 2.3 | `proof.sh 2.3` | `p2-failover.sh` (real power-off of the leader's node, node restarted by the script) | yes, waits | 8 min | 1-2 terminal |
+| 2.4 | `proof.sh 2.4` | `p2-clock-skew.sh` (shifts a node's clock, restores NTP) | yes, waits | 7 min | 1 terminal |
+| 2.5 | `proof.sh 2.5` | `p2-freeze.sh` (pauses and resumes a VM) | yes, waits | 4 min | 1 terminal |
+| 2.6 (and 2.8) | `proof.sh 2.6` | `p2-load-10k.sh` with `THINK_S=140 DURATION_S=340` (scales the aggregator 3->5->2->3, rolling update, then `p2-single-fetch.sh`) | yes, waits | 9 min | 1-2 terminal |
+| 2.7 | `proof.sh 2.7` | `p2-throughput-capped.sh` (CPU cap 250m, 1 vs 3 instances; restores the cap and the HPA) | yes, waits | 7 min | 1 terminal |
+| 3.1 | `proof.sh 3.1` | `p3-checks.sh` (33 checks; stops RabbitMQ and kills aggregator pods, restores them) | yes, waits | 10 min | 2 terminal |
+| 3.4 | `proof.sh 3.4` | `p3-order.sh` (5 checks) | no (adds and removes its own test data) | 2 min | 1 terminal |
+| 3.6 | `proof.sh 3.6` | `p1-write-probe.sh 150` through a real power-off of node-d (powered off 10 s in, back after 80 s) | yes, waits | 12 min | 1 terminal |
+| 4.1 | `proof.sh 4.1` | `satellite-tool.ts reference --db bnpb_canonical_store` | no | 5 min (reads the whole feed log) | 1 terminal |
+| 4.2 | `proof.sh 4.2` | the satellite unit tests (35 tests) | no | under 1 min | 1 terminal |
+| 4.4 | `proof.sh 4.4` | `p4-checks.sh` (baseline), `p4-reconnect.sh` with `CUT_S=90`, then Grafana | yes (a connection cut), waits | 8 min | 2 terminal + 1 Grafana (lag panel) |
+| 4.5 | `proof.sh 4.5` | `SCENARIO=kill-leader p4-checks.sh` | yes, waits | 4 min | 1 terminal |
+| 4.7 | `proof.sh 4.7` | three metric snapshots of the leader one minute apart, then Grafana | no | 4 min | 1 terminal + 1 Grafana |
+| 4.8 | `proof.sh 4.8` | `p4-reconnect.sh` with `CUT_S=20` | yes (a connection cut), waits | 3 min | 1 terminal |
+| 5.1 | `proof.sh 5.1` | `p5-latency.sh` baseline (300 alerts) and leader-process crash (400 alerts) | yes, waits (twice) | 14 min | 2 terminal |
+| 5.2 | `proof.sh 5.2` | `p5-quarantine.sh` (fake sensor; restarts the aggregator to point at it and back) | no (aggregator restarts) | 5 min | 1 terminal |
+| 5.3 | `proof.sh 5.3` | `p5-m1-load.sh` with `VUS_EACH=10` (normal, slow, blackhole; 60 s each) | yes (fake sensor, restarts), waits | 8 min | 1 terminal |
+| 5.4 | `proof.sh 5.4` | `p5-checks.sh` (six sensor fault modes) | yes (fake sensor, restarts), waits | 16 min | 2 terminal |
+| 5.5 | `proof.sh 5.5` | `load-test/p5-priority.js` with 40 Media and 5 Tim Lapangan users, 40 s | load only, waits | 3 min | 1 terminal |
+| 5.7 | `proof.sh 5.7` | field-report trace table, `p5-latency.sh` baseline (30 alerts), coastal trace table, then Jaeger and Grafana | light | 12 min | 2 terminal + 2 Jaeger + 2 Grafana |
+| G.1 | `proof.sh G.1` | `verify-resources.sh`, `verify-isolation.sh`, `smoke.sh` | no | 4 min | 1-3 terminal |
+| G.2 | `proof.sh G.2` | a request with a correlation id and its log lines in client-api and aggregator, then Grafana overview | no | 3 min | 1 terminal + 1 Grafana |
+| G.3 | `proof.sh G.3` | `audit-contract.sh` (24 checks) | no | 2 min | 1-2 terminal |
+| H.1 | `proof.sh H.1` | `hpa-ramp.sh` with `load-test/hpa-ramp.js`: waits for the minimum replicas, ramps 0 -> 5 -> 60 users (90 s up, 90 s hold, 60 s down), samples replicas and CPU% every 10 s, then waits for the scale-down | load only, waits | 12 min plus the wait | 1-2 terminal + 2 Grafana |
+
+**Totals.** P2: about 39 min of test time; P3: about 24 min; P4: about 24 min; P5: about 58 min; platform: about 9 min; HPA bonus (H.1): about 12 min; total about 2.8 hours of test time. With the health waits (about 4 minutes for each of the 14 "waits" items), the screenshot prompts, the retries for items that need tuning (2.7, 5.3, 5.5) and the browser steps, plan for about 6 hours for P2-P5 and the platform checks.
+
+**Order notes.** Do 2.3, 2.4, 2.5 and 3.6 on a quiet cluster and not right after a load test (wait for the 3 quiet minutes the runner enforces). Do 5.1, 5.3 and 5.4 after the fake-sensor items so the aggregator is not restarted in the middle of another test. 2.7 and 2.6 change the number of aggregator pods and restore it at the end: check `kubectl get hpa` shows both HPAs afterwards.
 
 ## Order and totals
 
