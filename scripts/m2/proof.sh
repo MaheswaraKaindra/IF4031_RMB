@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Takes the proofs for the report, one item at a time, in the order of docs/m2/proof-plan.md.
+# Takes the proofs for the report, one item at a time, in the order of the proof plan (see the report).
 #   scripts/m2/proof.sh list            all item ids with a one-line description (and which ones break something on purpose)
 #   scripts/m2/proof.sh 1.2             one item
 #   scripts/m2/proof.sh p1              a whole group in order (p1 p2 p3 p4 p5 g), asking before each item
